@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Dict
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import torch
 import yaml
@@ -88,6 +93,13 @@ def main() -> None:
     args = parse_args()
     cfg = load_config(args.config)
 
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
+
     _, val_loader = build_dataloaders(
         image_dir=cfg["dataset"]["image_dir"],
         mask_dir=cfg["dataset"]["mask_dir"],
@@ -96,9 +108,9 @@ def main() -> None:
         image_size=cfg["dataset"].get("image_size", 512),
         batch_size=cfg["training"]["batch_size"],
         num_workers=cfg["training"].get("num_workers", 4),
+        pin_memory=device.type == "cuda",
     )
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = DamageSegmentor(
         num_classes=cfg["model"]["num_classes"],
         in_channels=cfg["model"].get("in_channels", 3),

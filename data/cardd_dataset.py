@@ -45,6 +45,12 @@ class SegmentationPairTransform:
         )
 
         mask_np = np.array(mask, dtype=np.int64)
+        if mask_np.ndim == 3:
+            mask_np = mask_np[..., 0]
+        # CarDD SOD masks are commonly encoded as 0/255; convert to class ids 0/1.
+        unique_vals = np.unique(mask_np)
+        if unique_vals.size <= 2 and 0 in unique_vals and np.any(unique_vals > 1):
+            mask_np = (mask_np > 0).astype(np.int64)
         mask_tensor = torch.from_numpy(mask_np).long()
         return image_tensor, mask_tensor
 
@@ -92,7 +98,7 @@ class CarDDSegmentationDataset(Dataset):
     def __getitem__(self, index: int) -> Dict[str, torch.Tensor]:
         row = self.items[index]
         image = Image.open(row["image"]).convert("RGB")
-        mask = Image.open(row["mask"])
+        mask = Image.open(row["mask"]).convert("L")
         image_tensor, mask_tensor = self.transform(image, mask)
         return {
             "image": image_tensor,
@@ -109,6 +115,7 @@ def build_dataloaders(
     image_size: int,
     batch_size: int,
     num_workers: int,
+    pin_memory: bool = True,
 ) -> Tuple[DataLoader, DataLoader]:
     train_transform = SegmentationPairTransform(TransformConfig(image_size=image_size), is_train=True)
     val_transform = SegmentationPairTransform(TransformConfig(image_size=image_size), is_train=False)
@@ -121,7 +128,7 @@ def build_dataloaders(
         batch_size=batch_size,
         shuffle=True,
         num_workers=num_workers,
-        pin_memory=True,
+        pin_memory=pin_memory,
     )
 
     val_loader = DataLoader(
@@ -129,6 +136,6 @@ def build_dataloaders(
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=True,
+        pin_memory=pin_memory,
     )
     return train_loader, val_loader

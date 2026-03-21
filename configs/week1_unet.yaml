@@ -1,6 +1,6 @@
 dataset:
-  image_dir: data/cardd/images
-  mask_dir: data/cardd/masks
+  image_dir: data/CarDD_release/CarDD_release/CarDD_SOD/CarDD-TR/CarDD-TR-Image
+  mask_dir: data/CarDD_release/CarDD_release/CarDD_SOD/CarDD-TR/CarDD-TR-Mask
   train_split: data/splits/train.json
   val_split: data/splits/val.json
   image_size: 512
@@ -9,12 +9,16 @@ model:
   name: unet
   in_channels: 3
   base_channels: 32
-  num_classes: 7
+  num_classes: 2
 
 training:
   epochs: 25
   batch_size: 8
   lr: 0.001
   weight_decay: 0.0001
-  num_workers: 4
+  num_workers: 0
   output_dir: outputs/week1_unet
+  visualize_every: 10
+  visualize_samples: 3
+  tensorboard: true
+  tensorboard_dir: outputs/week1_unet/tensorboard
