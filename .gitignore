@@ -1,3 +1,8 @@
 *.zip
 data/CarDD_release
 outputs/
+__pycache__/
+*.log
+*.pth
+*.ckpt
+.DS_Store
