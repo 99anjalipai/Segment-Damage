@@ -13,10 +13,32 @@ model:
   num_classes: 2
 
 training:
-  epochs: 25
-  batch_size: 8
+  epochs: 15
+  batch_size: 16
   lr: 0.001
   weight_decay: 0.0001
+  loss:
+    name: ce_dice  # options: ce | dice | focal | grad | ce_dice | ce_focal | dice_focal | ce_dice_focal
+    use_gradient: false
+    gradient_foreground_class: 1
+    focal_gamma: 2.0
+    focal_alpha: 0.25
+    weights:
+      ce: 1.0
+      dice: 1.0
+      focal: 1.0
+      grad: 1.0
+  scheduler:
+    name: cosine_annealing  # options: cosine_annealing | reduce_on_plateau
+    t_max: 25
+    eta_min: 0.000001
+    factor: 0.5
+    patience: 3
+    mode: min
+    threshold: 0.0001
+    threshold_mode: rel
+    cooldown: 0
+    min_lr: 0.000001
   num_workers: 0
   output_dir: outputs/week1_unet
   visualize_every: 10

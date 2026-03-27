@@ -14,7 +14,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import yaml
-from torch.optim import AdamW
+from torch.optim import Adam, AdamW, RMSprop, SGD
+from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
@@ -95,7 +96,13 @@ def save_epoch_visualization(
 @torch.no_grad()
 def evaluate(model: DamageSegmentor, loader: DataLoader, device: torch.device) -> Dict[str, float]:
     model.eval()
-    running = {"loss_total": 0.0, "loss_ce": 0.0, "loss_dice": 0.0}
+    running = {
+        "loss_total": 0.0,
+        "loss_ce": 0.0,
+        "loss_dice": 0.0,
+        "loss_focal": 0.0,
+        "loss_grad": 0.0,
+    }
     num_batches = 0
     for batch in loader:
         images = batch["image"].to(device)
@@ -111,7 +118,81 @@ def evaluate(model: DamageSegmentor, loader: DataLoader, device: torch.device) -
         "val_loss": running["loss_total"] / denom,
         "val_loss_ce": running["loss_ce"] / denom,
         "val_loss_dice": running["loss_dice"] / denom,
+        "val_loss_focal": running["loss_focal"] / denom,
+        "val_loss_grad": running["loss_grad"] / denom,
     }
+
+
+def build_scheduler(
+    optimizer: torch.optim.Optimizer,
+    training_cfg: Dict,
+    epochs: int,
+) -> tuple[torch.optim.lr_scheduler.LRScheduler | ReduceLROnPlateau | None, str | None]:
+    scheduler_cfg = training_cfg.get("scheduler")
+    if not scheduler_cfg:
+        return None, None
+
+    name = str(scheduler_cfg.get("name", "")).strip().lower()
+    if not name:
+        return None, None
+
+    if name in {"cosine", "cosine_annealing", "cosineannealing", "cosineannealinglr"}:
+        scheduler = CosineAnnealingLR(
+            optimizer,
+            T_max=int(scheduler_cfg.get("t_max", epochs)),
+            eta_min=float(scheduler_cfg.get("eta_min", 0.0)),
+        )
+        return scheduler, "epoch"
+
+    if name in {"reduce_on_plateau", "reducelronplateau", "lronplateau", "plateau"}:
+        scheduler = ReduceLROnPlateau(
+            optimizer,
+            mode=str(scheduler_cfg.get("mode", "min")),
+            factor=float(scheduler_cfg.get("factor", 0.1)),
+            patience=int(scheduler_cfg.get("patience", 5)),
+            threshold=float(scheduler_cfg.get("threshold", 1e-4)),
+            threshold_mode=str(scheduler_cfg.get("threshold_mode", "rel")),
+            cooldown=int(scheduler_cfg.get("cooldown", 0)),
+            min_lr=float(scheduler_cfg.get("min_lr", 0.0)),
+        )
+        return scheduler, "val_loss"
+
+    raise ValueError(
+        f"Unsupported scheduler '{name}'. Use one of: cosine_annealing, reduce_on_plateau"
+    )
+
+
+def build_optimizer(model: DamageSegmentor, training_cfg: Dict) -> torch.optim.Optimizer:
+    optimizer_cfg = training_cfg.get("optimizer", {})
+    name = str(optimizer_cfg.get("name", "adamw")).strip().lower()
+    lr = float(training_cfg.get("lr", 1e-3))
+    weight_decay = float(training_cfg.get("weight_decay", 1e-4))
+
+    if name == "adamw":
+        return AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+
+    if name == "adam":
+        return Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+
+    if name == "sgd":
+        return SGD(
+            model.parameters(),
+            lr=lr,
+            weight_decay=weight_decay,
+            momentum=float(optimizer_cfg.get("momentum", 0.9)),
+            nesterov=bool(optimizer_cfg.get("nesterov", False)),
+        )
+
+    if name == "rmsprop":
+        return RMSprop(
+            model.parameters(),
+            lr=lr,
+            weight_decay=weight_decay,
+            momentum=float(optimizer_cfg.get("momentum", 0.0)),
+            alpha=float(optimizer_cfg.get("alpha", 0.99)),
+        )
+
+    raise ValueError(f"Unsupported optimizer '{name}'. Use one of: adamw, adam, sgd, rmsprop")
 
 
 def train() -> None:
@@ -146,12 +227,14 @@ def train() -> None:
         num_classes=cfg["model"]["num_classes"],
         in_channels=cfg["model"].get("in_channels", 3),
         base_channels=cfg["model"].get("base_channels", 32),
+        loss_config=cfg["training"].get("loss", {}),
     ).to(device)
 
-    optimizer = AdamW(
-        model.parameters(),
-        lr=cfg["training"].get("lr", 1e-3),
-        weight_decay=cfg["training"].get("weight_decay", 1e-4),
+    optimizer = build_optimizer(model=model, training_cfg=cfg["training"])
+    scheduler, scheduler_step_on = build_scheduler(
+        optimizer=optimizer,
+        training_cfg=cfg["training"],
+        epochs=cfg["training"].get("epochs", 25),
     )
 
     output_dir = Path(cfg["training"].get("output_dir", "outputs/week1_unet"))
@@ -167,12 +250,23 @@ def train() -> None:
 
     if writer is not None:
         print(f"[Info] TensorBoard logging enabled at: {tb_dir}")
+    if scheduler is not None:
+        print(
+            f"[Info] Scheduler enabled: {cfg['training']['scheduler']['name']} "
+            f"(step on: {scheduler_step_on})"
+        )
 
     epochs = cfg["training"].get("epochs", 25)
     print("[Stage] Training...")
     for epoch in range(1, epochs + 1):
         model.train()
-        running = {"loss_total": 0.0, "loss_ce": 0.0, "loss_dice": 0.0}
+        running = {
+            "loss_total": 0.0,
+            "loss_ce": 0.0,
+            "loss_dice": 0.0,
+            "loss_focal": 0.0,
+            "loss_grad": 0.0,
+        }
         num_batches = 0
 
         progress = tqdm(train_loader, desc=f"Epoch {epoch}/{epochs}", leave=False)
@@ -193,6 +287,8 @@ def train() -> None:
                 loss=f"{losses['loss_total'].item():.4f}",
                 ce=f"{losses['loss_ce'].item():.4f}",
                 dice=f"{losses['loss_dice'].item():.4f}",
+                focal=f"{losses['loss_focal'].item():.4f}",
+                grad=f"{losses['loss_grad'].item():.4f}",
             )
 
         train_metrics = {k: v / max(num_batches, 1) for k, v in running.items()}
@@ -206,13 +302,25 @@ def train() -> None:
         history.append(row)
         print(row)
 
+        if scheduler is not None:
+            if scheduler_step_on == "val_loss":
+                scheduler.step(val_metrics["val_loss"])
+            else:
+                scheduler.step()
+
         if writer is not None:
             writer.add_scalar("train/loss_total", train_metrics["loss_total"], epoch)
             writer.add_scalar("train/loss_ce", train_metrics["loss_ce"], epoch)
             writer.add_scalar("train/loss_dice", train_metrics["loss_dice"], epoch)
+            if "loss_focal" in train_metrics:
+                writer.add_scalar("train/loss_focal", train_metrics["loss_focal"], epoch)
+            if "loss_grad" in train_metrics:
+                writer.add_scalar("train/loss_grad", train_metrics["loss_grad"], epoch)
             writer.add_scalar("val/loss_total", val_metrics["val_loss"], epoch)
             writer.add_scalar("val/loss_ce", val_metrics["val_loss_ce"], epoch)
             writer.add_scalar("val/loss_dice", val_metrics["val_loss_dice"], epoch)
+            writer.add_scalar("val/loss_focal", val_metrics["val_loss_focal"], epoch)
+            writer.add_scalar("val/loss_grad", val_metrics["val_loss_grad"], epoch)
             writer.add_scalar("train/lr", optimizer.param_groups[0]["lr"], epoch)
 
         if vis_every > 0 and epoch % vis_every == 0:
@@ -223,6 +331,8 @@ def train() -> None:
             "epoch": epoch,
             "model_state": model.state_dict(),
             "optimizer_state": optimizer.state_dict(),
+            "scheduler_state": scheduler.state_dict() if scheduler is not None else None,
+            "scheduler_name": cfg["training"].get("scheduler", {}).get("name"),
             "config": cfg,
         }
         torch.save(checkpoint, output_dir / "last.pt")
