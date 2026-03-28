@@ -46,6 +46,8 @@ def parse_args() -> argparse.Namespace:
         help="Which split to evaluate: train, val, or test (if available)."
     )
     return parser.parse_args()
+
+
 def denormalize_image(image: torch.Tensor) -> np.ndarray:
     mean = torch.tensor([0.485, 0.456, 0.406], device=image.device).view(3, 1, 1)
     std = torch.tensor([0.229, 0.224, 0.225], device=image.device).view(3, 1, 1)
@@ -60,7 +62,10 @@ def save_eval_visualizations(
     device: torch.device,
     output_dir: Path,
     max_samples: int = 5,
-    ) -> None:
+) -> None:
+    if max_samples <= 0:
+        return
+
     model_was_training = model.training
     model.eval()
 
@@ -209,6 +214,7 @@ def main() -> None:
         num_classes=cfg["model"]["num_classes"],
         in_channels=cfg["model"].get("in_channels", 3),
         base_channels=cfg["model"].get("base_channels", 32),
+        loss_config=cfg["training"].get("loss", {}),
     ).to(device)
 
     checkpoint = torch.load(args.checkpoint, map_location=device)
