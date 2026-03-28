@@ -24,6 +24,80 @@ from data.cardd_dataset import build_dataloaders
 from models import DamageSegmentor
 
 
+def classification_metrics_from_confusion(conf: torch.Tensor) -> Dict[str, float]:
+    total = float(conf.sum().item())
+    if total <= 0.0:
+        return {"accuracy": 0.0, "macro_f1": 0.0}
+
+    correct = float(torch.diag(conf).sum().item())
+    accuracy = correct / total
+
+    f1_scores = []
+    num_classes = int(conf.shape[0])
+    for cls_idx in range(num_classes):
+        tp = float(conf[cls_idx, cls_idx].item())
+        fp = float(conf[:, cls_idx].sum().item() - tp)
+        fn = float(conf[cls_idx, :].sum().item() - tp)
+
+        precision = tp / (tp + fp) if (tp + fp) > 0.0 else 0.0
+        recall = tp / (tp + fn) if (tp + fn) > 0.0 else 0.0
+        if precision + recall > 0.0:
+            f1 = 2.0 * precision * recall / (precision + recall)
+        else:
+            f1 = 0.0
+        f1_scores.append(f1)
+
+    macro_f1 = float(sum(f1_scores) / max(len(f1_scores), 1))
+    return {"accuracy": float(accuracy), "macro_f1": macro_f1}
+
+
+def multilabel_metrics_from_counts(
+    tp_per_class: torch.Tensor,
+    fp_per_class: torch.Tensor,
+    fn_per_class: torch.Tensor,
+    exact_match_correct: int,
+    num_samples: int,
+) -> Dict[str, float]:
+    if num_samples <= 0:
+        return {
+            "exact_match": 0.0,
+            "micro_f1": 0.0,
+            "macro_f1": 0.0,
+        }
+
+    tp = float(tp_per_class.sum().item())
+    fp = float(fp_per_class.sum().item())
+    fn = float(fn_per_class.sum().item())
+
+    micro_precision = tp / (tp + fp) if (tp + fp) > 0.0 else 0.0
+    micro_recall = tp / (tp + fn) if (tp + fn) > 0.0 else 0.0
+    if micro_precision + micro_recall > 0.0:
+        micro_f1 = 2.0 * micro_precision * micro_recall / (micro_precision + micro_recall)
+    else:
+        micro_f1 = 0.0
+
+    f1_scores = []
+    for cls_idx in range(int(tp_per_class.shape[0])):
+        tp_c = float(tp_per_class[cls_idx].item())
+        fp_c = float(fp_per_class[cls_idx].item())
+        fn_c = float(fn_per_class[cls_idx].item())
+        precision_c = tp_c / (tp_c + fp_c) if (tp_c + fp_c) > 0.0 else 0.0
+        recall_c = tp_c / (tp_c + fn_c) if (tp_c + fn_c) > 0.0 else 0.0
+        if precision_c + recall_c > 0.0:
+            f1_c = 2.0 * precision_c * recall_c / (precision_c + recall_c)
+        else:
+            f1_c = 0.0
+        f1_scores.append(f1_c)
+
+    macro_f1 = float(sum(f1_scores) / max(len(f1_scores), 1))
+    exact_match = float(exact_match_correct / max(num_samples, 1))
+    return {
+        "exact_match": exact_match,
+        "micro_f1": float(micro_f1),
+        "macro_f1": macro_f1,
+    }
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Week 1 baseline training for damage segmentation.")
     parser.add_argument("--config", type=str, default="configs/week1_unet.yaml")
@@ -94,7 +168,13 @@ def save_epoch_visualization(
 
 
 @torch.no_grad()
-def evaluate(model: DamageSegmentor, loader: DataLoader, device: torch.device) -> Dict[str, float]:
+def evaluate(
+    model: DamageSegmentor,
+    loader: DataLoader,
+    device: torch.device,
+    cls_multilabel: bool,
+    cls_threshold: float,
+) -> Dict[str, float]:
     model.eval()
     running = {
         "loss_total": 0.0,
@@ -102,24 +182,103 @@ def evaluate(model: DamageSegmentor, loader: DataLoader, device: torch.device) -
         "loss_dice": 0.0,
         "loss_focal": 0.0,
         "loss_grad": 0.0,
+        "loss_contrastive": 0.0,
+        "loss_cls": 0.0,
+        "loss_cls_contrastive": 0.0,
     }
+    cls_confusion: torch.Tensor | None = None
+    tp_per_class: torch.Tensor | None = None
+    fp_per_class: torch.Tensor | None = None
+    fn_per_class: torch.Tensor | None = None
+    exact_match_correct = 0
+    exact_match_total = 0
     num_batches = 0
     for batch in loader:
         images = batch["image"].to(device)
         masks = batch["mask"].to(device)
+        class_labels = batch.get("class_label")
+        class_labels_multi = batch.get("class_label_multi")
+        if class_labels is not None:
+            class_labels = class_labels.to(device)
+        if class_labels_multi is not None:
+            class_labels_multi = class_labels_multi.to(device)
         outputs = model(images)
-        losses = model.compute_losses(outputs["logits"], masks)
+        losses = model.compute_losses(
+            outputs["logits"],
+            masks,
+            projected_features=outputs.get("projected_features"),
+            cls_logits=outputs.get("cls_logits"),
+            cls_targets=class_labels,
+            cls_targets_multi=class_labels_multi,
+            cls_embedding=outputs.get("cls_embedding"),
+        )
         for k in running:
             running[k] += losses[k].item()
+
+        cls_logits = outputs.get("cls_logits")
+        if cls_logits is not None:
+            if cls_multilabel and class_labels_multi is not None:
+                cls_probs = torch.sigmoid(cls_logits)
+                cls_preds = (cls_probs >= float(cls_threshold)).to(torch.int64).detach().cpu()
+                cls_tgts = (class_labels_multi > 0.5).to(torch.int64).detach().cpu()
+
+                num_cls = int(cls_preds.shape[1])
+                if tp_per_class is None or int(tp_per_class.shape[0]) != num_cls:
+                    tp_per_class = torch.zeros(num_cls, dtype=torch.int64)
+                    fp_per_class = torch.zeros(num_cls, dtype=torch.int64)
+                    fn_per_class = torch.zeros(num_cls, dtype=torch.int64)
+
+                tp_per_class += ((cls_preds == 1) & (cls_tgts == 1)).sum(dim=0)
+                fp_per_class += ((cls_preds == 1) & (cls_tgts == 0)).sum(dim=0)
+                fn_per_class += ((cls_preds == 0) & (cls_tgts == 1)).sum(dim=0)
+                exact_match_correct += int((cls_preds == cls_tgts).all(dim=1).sum().item())
+                exact_match_total += int(cls_preds.shape[0])
+            elif class_labels is not None:
+                cls_preds = cls_logits.argmax(dim=1)
+                num_cls = int(cls_logits.shape[1])
+                if cls_confusion is None or int(cls_confusion.shape[0]) != num_cls:
+                    cls_confusion = torch.zeros((num_cls, num_cls), dtype=torch.int64)
+                for t, p in zip(class_labels.detach().cpu(), cls_preds.detach().cpu()):
+                    ti = int(t.item())
+                    pi = int(p.item())
+                    if 0 <= ti < num_cls and 0 <= pi < num_cls:
+                        cls_confusion[ti, pi] += 1
         num_batches += 1
 
     denom = max(num_batches, 1)
+    if cls_multilabel and tp_per_class is not None and fp_per_class is not None and fn_per_class is not None:
+        cls_metrics = multilabel_metrics_from_counts(
+            tp_per_class=tp_per_class,
+            fp_per_class=fp_per_class,
+            fn_per_class=fn_per_class,
+            exact_match_correct=exact_match_correct,
+            num_samples=exact_match_total,
+        )
+        val_cls_accuracy = cls_metrics["exact_match"]
+        val_cls_micro_f1 = cls_metrics["micro_f1"]
+        val_cls_macro_f1 = cls_metrics["macro_f1"]
+    else:
+        cls_metrics = (
+            classification_metrics_from_confusion(cls_confusion)
+            if cls_confusion is not None
+            else {"accuracy": 0.0, "macro_f1": 0.0}
+        )
+        val_cls_accuracy = cls_metrics["accuracy"]
+        val_cls_micro_f1 = cls_metrics["macro_f1"]
+        val_cls_macro_f1 = cls_metrics["macro_f1"]
+
     return {
         "val_loss": running["loss_total"] / denom,
         "val_loss_ce": running["loss_ce"] / denom,
         "val_loss_dice": running["loss_dice"] / denom,
         "val_loss_focal": running["loss_focal"] / denom,
         "val_loss_grad": running["loss_grad"] / denom,
+        "val_loss_contrastive": running["loss_contrastive"] / denom,
+        "val_loss_cls": running["loss_cls"] / denom,
+        "val_loss_cls_contrastive": running["loss_cls_contrastive"] / denom,
+        "val_cls_accuracy": val_cls_accuracy,
+        "val_cls_micro_f1": val_cls_micro_f1,
+        "val_cls_macro_f1": val_cls_macro_f1,
     }
 
 
@@ -199,6 +358,11 @@ def train() -> None:
     print("[Stage] Parsing configuration...")
     args = parse_args()
     cfg = load_config(args.config)
+    model_cfg = cfg.get("model", {})
+    dent_cfg = model_cfg.get("dent_classification", {})
+    cls_cfg = cfg.get("training", {}).get("loss", {}).get("classification", {})
+    cls_multilabel = bool(cls_cfg.get("multilabel", False))
+    cls_threshold = float(cls_cfg.get("threshold", 0.5))
 
     print("[Stage] Selecting device...")
     if torch.cuda.is_available():
@@ -219,16 +383,21 @@ def train() -> None:
         batch_size=cfg["training"]["batch_size"],
         num_workers=cfg["training"].get("num_workers", 4),
         pin_memory=device.type == "cuda",
+        class_labels_file=cfg["dataset"].get("class_labels_file"),
+        default_class_label=int(cfg["dataset"].get("default_class_label", 0)),
+        infer_class_from_mask=bool(cfg["dataset"].get("infer_class_from_mask", False)),
+        multilabel_classification=cls_multilabel,
+        num_dent_classes=int(dent_cfg.get("num_classes", 0)) if cls_multilabel else None,
     )
     print(f"[Info] Train batches: {len(train_loader)} | Val batches: {len(val_loader)}")
 
     print("[Stage] Model loading...")
-    model_cfg = cfg.get("model", {})
     model = DamageSegmentor(
         num_classes=model_cfg["num_classes"],
         in_channels=model_cfg.get("in_channels", 3),
         base_channels=model_cfg.get("base_channels", 32),
         feature_projector_config=model_cfg.get("feature_projector", {}),
+        dent_classification_config=model_cfg.get("dent_classification", {}),
         loss_config=cfg["training"].get("loss", {}),
     ).to(device)
 
@@ -268,22 +437,74 @@ def train() -> None:
             "loss_dice": 0.0,
             "loss_focal": 0.0,
             "loss_grad": 0.0,
+            "loss_contrastive": 0.0,
+            "loss_cls": 0.0,
+            "loss_cls_contrastive": 0.0,
         }
+        cls_confusion: torch.Tensor | None = None
+        tp_per_class: torch.Tensor | None = None
+        fp_per_class: torch.Tensor | None = None
+        fn_per_class: torch.Tensor | None = None
+        exact_match_correct = 0
+        exact_match_total = 0
         num_batches = 0
 
         progress = tqdm(train_loader, desc=f"Epoch {epoch}/{epochs}", leave=False)
         for batch in progress:
             images = batch["image"].to(device)
             masks = batch["mask"].to(device)
+            class_labels = batch.get("class_label")
+            class_labels_multi = batch.get("class_label_multi")
+            if class_labels is not None:
+                class_labels = class_labels.to(device)
+            if class_labels_multi is not None:
+                class_labels_multi = class_labels_multi.to(device)
 
             optimizer.zero_grad(set_to_none=True)
             outputs = model(images)
-            losses = model.compute_losses(outputs["logits"], masks)
+            losses = model.compute_losses(
+                outputs["logits"],
+                masks,
+                projected_features=outputs.get("projected_features"),
+                cls_logits=outputs.get("cls_logits"),
+                cls_targets=class_labels,
+                cls_targets_multi=class_labels_multi,
+                cls_embedding=outputs.get("cls_embedding"),
+            )
             losses["loss_total"].backward()
             optimizer.step()
 
             for k in running:
                 running[k] += losses[k].item()
+
+            cls_logits = outputs.get("cls_logits")
+            if cls_logits is not None:
+                if cls_multilabel and class_labels_multi is not None:
+                    cls_probs = torch.sigmoid(cls_logits)
+                    cls_preds = (cls_probs >= float(cls_threshold)).to(torch.int64).detach().cpu()
+                    cls_tgts = (class_labels_multi > 0.5).to(torch.int64).detach().cpu()
+
+                    num_cls = int(cls_preds.shape[1])
+                    if tp_per_class is None or int(tp_per_class.shape[0]) != num_cls:
+                        tp_per_class = torch.zeros(num_cls, dtype=torch.int64)
+                        fp_per_class = torch.zeros(num_cls, dtype=torch.int64)
+                        fn_per_class = torch.zeros(num_cls, dtype=torch.int64)
+
+                    tp_per_class += ((cls_preds == 1) & (cls_tgts == 1)).sum(dim=0)
+                    fp_per_class += ((cls_preds == 1) & (cls_tgts == 0)).sum(dim=0)
+                    fn_per_class += ((cls_preds == 0) & (cls_tgts == 1)).sum(dim=0)
+                    exact_match_correct += int((cls_preds == cls_tgts).all(dim=1).sum().item())
+                    exact_match_total += int(cls_preds.shape[0])
+                elif class_labels is not None:
+                    cls_preds = cls_logits.argmax(dim=1)
+                    num_cls = int(cls_logits.shape[1])
+                    if cls_confusion is None or int(cls_confusion.shape[0]) != num_cls:
+                        cls_confusion = torch.zeros((num_cls, num_cls), dtype=torch.int64)
+                    for t, p in zip(class_labels.detach().cpu(), cls_preds.detach().cpu()):
+                        ti = int(t.item())
+                        pi = int(p.item())
+                        if 0 <= ti < num_cls and 0 <= pi < num_cls:
+                            cls_confusion[ti, pi] += 1
             num_batches += 1
             progress.set_postfix(
                 loss=f"{losses['loss_total'].item():.4f}",
@@ -291,10 +512,40 @@ def train() -> None:
                 dice=f"{losses['loss_dice'].item():.4f}",
                 focal=f"{losses['loss_focal'].item():.4f}",
                 grad=f"{losses['loss_grad'].item():.4f}",
+                ctr=f"{losses['loss_contrastive'].item():.4f}",
+                cls=f"{losses['loss_cls'].item():.4f}",
+                cls_ctr=f"{losses['loss_cls_contrastive'].item():.4f}",
             )
 
         train_metrics = {k: v / max(num_batches, 1) for k, v in running.items()}
-        val_metrics = evaluate(model, val_loader, device)
+        if cls_multilabel and tp_per_class is not None and fp_per_class is not None and fn_per_class is not None:
+            cls_train_metrics = multilabel_metrics_from_counts(
+                tp_per_class=tp_per_class,
+                fp_per_class=fp_per_class,
+                fn_per_class=fn_per_class,
+                exact_match_correct=exact_match_correct,
+                num_samples=exact_match_total,
+            )
+            train_metrics["cls_accuracy"] = cls_train_metrics["exact_match"]
+            train_metrics["cls_micro_f1"] = cls_train_metrics["micro_f1"]
+            train_metrics["cls_macro_f1"] = cls_train_metrics["macro_f1"]
+        else:
+            cls_train_metrics = (
+                classification_metrics_from_confusion(cls_confusion)
+                if cls_confusion is not None
+                else {"accuracy": 0.0, "macro_f1": 0.0}
+            )
+            train_metrics["cls_accuracy"] = cls_train_metrics["accuracy"]
+            train_metrics["cls_micro_f1"] = cls_train_metrics["macro_f1"]
+            train_metrics["cls_macro_f1"] = cls_train_metrics["macro_f1"]
+
+        val_metrics = evaluate(
+            model,
+            val_loader,
+            device,
+            cls_multilabel=cls_multilabel,
+            cls_threshold=cls_threshold,
+        )
 
         row = {
             "epoch": epoch,
@@ -318,11 +569,26 @@ def train() -> None:
                 writer.add_scalar("train/loss_focal", train_metrics["loss_focal"], epoch)
             if "loss_grad" in train_metrics:
                 writer.add_scalar("train/loss_grad", train_metrics["loss_grad"], epoch)
+            if "loss_contrastive" in train_metrics:
+                writer.add_scalar("train/loss_contrastive", train_metrics["loss_contrastive"], epoch)
+            if "loss_cls" in train_metrics:
+                writer.add_scalar("train/loss_cls", train_metrics["loss_cls"], epoch)
+            if "loss_cls_contrastive" in train_metrics:
+                writer.add_scalar("train/loss_cls_contrastive", train_metrics["loss_cls_contrastive"], epoch)
+            writer.add_scalar("train/cls_accuracy", train_metrics["cls_accuracy"], epoch)
+            writer.add_scalar("train/cls_micro_f1", train_metrics["cls_micro_f1"], epoch)
+            writer.add_scalar("train/cls_macro_f1", train_metrics["cls_macro_f1"], epoch)
             writer.add_scalar("val/loss_total", val_metrics["val_loss"], epoch)
             writer.add_scalar("val/loss_ce", val_metrics["val_loss_ce"], epoch)
             writer.add_scalar("val/loss_dice", val_metrics["val_loss_dice"], epoch)
             writer.add_scalar("val/loss_focal", val_metrics["val_loss_focal"], epoch)
             writer.add_scalar("val/loss_grad", val_metrics["val_loss_grad"], epoch)
+            writer.add_scalar("val/loss_contrastive", val_metrics["val_loss_contrastive"], epoch)
+            writer.add_scalar("val/loss_cls", val_metrics["val_loss_cls"], epoch)
+            writer.add_scalar("val/loss_cls_contrastive", val_metrics["val_loss_cls_contrastive"], epoch)
+            writer.add_scalar("val/cls_accuracy", val_metrics["val_cls_accuracy"], epoch)
+            writer.add_scalar("val/cls_micro_f1", val_metrics["val_cls_micro_f1"], epoch)
+            writer.add_scalar("val/cls_macro_f1", val_metrics["val_cls_macro_f1"], epoch)
             writer.add_scalar("train/lr", optimizer.param_groups[0]["lr"], epoch)
 
         if vis_every > 0 and epoch % vis_every == 0:
