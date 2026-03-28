@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import argparse
 import copy
+from datetime import datetime, timezone
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict
 
@@ -155,13 +157,70 @@ def build_leaderboard(all_results: Dict[str, Any], primary_split: str = "val") -
     return rows
 
 
-def update_summary_fields(all_results: Dict[str, Any], primary_split: str) -> None:
+def extract_experiment_tracking_fields(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    model_cfg = cfg.get("model", {})
+    training_cfg = cfg.get("training", {})
+    loss_cfg = training_cfg.get("loss", {})
+    optimizer_cfg = training_cfg.get("optimizer", {})
+    scheduler_cfg = training_cfg.get("scheduler", {})
+
+    return {
+        "model": {
+            "name": model_cfg.get("name"),
+            "in_channels": model_cfg.get("in_channels"),
+            "base_channels": model_cfg.get("base_channels"),
+            "num_classes": model_cfg.get("num_classes"),
+            "feature_projector": model_cfg.get("feature_projector", {}),
+        },
+        "training": {
+            "epochs": training_cfg.get("epochs"),
+            "batch_size": training_cfg.get("batch_size"),
+            "lr": training_cfg.get("lr"),
+            "weight_decay": training_cfg.get("weight_decay"),
+            "num_workers": training_cfg.get("num_workers"),
+        },
+        "loss": {
+            "name": loss_cfg.get("name"),
+            "use_gradient": loss_cfg.get("use_gradient", False),
+            "gradient_foreground_class": loss_cfg.get("gradient_foreground_class"),
+            "focal_gamma": loss_cfg.get("focal_gamma"),
+            "focal_alpha": loss_cfg.get("focal_alpha"),
+            "weights": loss_cfg.get("weights", {}),
+        },
+        "optimizer": {
+            "name": optimizer_cfg.get("name"),
+            "params": {k: v for k, v in optimizer_cfg.items() if k != "name"},
+        },
+        "scheduler": {
+            "name": scheduler_cfg.get("name"),
+            "params": {k: v for k, v in scheduler_cfg.items() if k != "name"},
+        },
+    }
+
+
+def update_summary_fields(all_results: Dict[str, Any], primary_split: str, evaluate_splits: list[str]) -> None:
     leaderboard = build_leaderboard(all_results=all_results, primary_split=primary_split)
     all_results["leaderboard"] = leaderboard
     if leaderboard:
         all_results["best_experiment"] = leaderboard[0]["experiment"]
     else:
         all_results["best_experiment"] = None
+
+    leaderboards_by_split: Dict[str, list[Dict[str, Any]]] = {}
+    best_by_split: Dict[str, str | None] = {}
+    for split in evaluate_splits:
+        split_lb = build_leaderboard(all_results=all_results, primary_split=split)
+        leaderboards_by_split[split] = split_lb
+        best_by_split[split] = split_lb[0]["experiment"] if split_lb else None
+
+    all_results["leaderboards_by_split"] = leaderboards_by_split
+    all_results["best_experiment_by_split"] = best_by_split
+    all_results["completed_experiments"] = sum(
+        1 for rec in all_results.get("experiments", {}).values() if rec.get("status") == "completed"
+    )
+    all_results["failed_experiments"] = sum(
+        1 for rec in all_results.get("experiments", {}).values() if rec.get("status") == "failed"
+    )
 
 
 def main() -> None:
@@ -182,11 +241,15 @@ def main() -> None:
     generated_cfg_dir = output_root / "generated_configs"
 
     all_results: Dict[str, Any] = {
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "base_config": str(base_config_path),
         "experiments_config": str(experiments_config_path),
         "evaluate_splits": args.evaluate_splits,
         "comparison_split": args.comparison_split,
         "epochs_override": args.epochs_override,
+        "tiny_area_threshold": args.tiny_area_threshold,
+        "output_root": str(output_root),
+        "python_executable": sys.executable,
         "experiments": {},
     }
 
@@ -202,10 +265,26 @@ def main() -> None:
         exp_overrides = exp.get("overrides", {})
         print(f"\n[Experiment] {exp_name}")
 
+        exp_started_epoch = time.time()
+        exp_started_utc = datetime.now(timezone.utc).isoformat()
+        exp_output_dir = output_root / exp_name
+        exp_config_path = generated_cfg_dir / f"{exp_name}.yaml"
+        checkpoint_path = exp_output_dir / "best.pt"
+
         exp_record: Dict[str, Any] = {
             "status": "running",
+            "started_at_utc": exp_started_utc,
             "overrides": exp_overrides,
+            "artifacts": {
+                "generated_config": str(exp_config_path),
+                "output_dir": str(exp_output_dir),
+                "checkpoint_best": str(checkpoint_path),
+                "history": str(exp_output_dir / "history.json"),
+                "checkpoint_last": str(exp_output_dir / "last.pt"),
+                "tensorboard_dir": str(exp_output_dir / "tensorboard"),
+            },
             "splits": {},
+            "split_artifacts": {},
         }
         all_results["experiments"][exp_name] = exp_record
 
@@ -218,7 +297,8 @@ def main() -> None:
                 epochs_override=args.epochs_override,
             )
 
-            exp_config_path = generated_cfg_dir / f"{exp_name}.yaml"
+            exp_record["resolved"] = extract_experiment_tracking_fields(cfg)
+
             save_yaml(exp_config_path, cfg)
 
             run_command(
@@ -256,6 +336,19 @@ def main() -> None:
 
                 metrics = read_metrics(split_results_dir / "metrics.json")
                 exp_record["splits"][split] = metrics
+                exp_record["split_artifacts"][split] = {
+                    "results_dir": str(split_results_dir),
+                    "metrics_json": str(split_results_dir / "metrics.json"),
+                    "visualizations_dir": str(split_results_dir / "visualizations"),
+                }
+
+                exp_record.setdefault("scorecard", {})[split] = {
+                    "DET_l": float(metrics.get("DET_l", -1.0)),
+                    "mIoU": float(metrics.get("mIoU", -1.0)),
+                    "F1_proxy": float(metrics.get("F1_proxy", -1.0)),
+                    "tiny_true_positive": int(metrics.get("tiny_true_positive", 0)),
+                    "tiny_false_negative": int(metrics.get("tiny_false_negative", 0)),
+                }
 
             exp_record["status"] = "completed"
 
@@ -264,11 +357,26 @@ def main() -> None:
             exp_record["error"] = str(exc)
             print(f"[Error] Experiment '{exp_name}' failed: {exc}")
             if not args.continue_on_error:
-                update_summary_fields(all_results, primary_split=args.comparison_split)
+                exp_record["ended_at_utc"] = datetime.now(timezone.utc).isoformat()
+                exp_record["duration_sec"] = round(time.time() - exp_started_epoch, 3)
+                update_summary_fields(
+                    all_results,
+                    primary_split=args.comparison_split,
+                    evaluate_splits=args.evaluate_splits,
+                )
+                all_results["updated_at_utc"] = datetime.now(timezone.utc).isoformat()
                 save_json(output_root / "summary.json", all_results)
                 raise
 
-        update_summary_fields(all_results, primary_split=args.comparison_split)
+        exp_record["ended_at_utc"] = datetime.now(timezone.utc).isoformat()
+        exp_record["duration_sec"] = round(time.time() - exp_started_epoch, 3)
+
+        update_summary_fields(
+            all_results,
+            primary_split=args.comparison_split,
+            evaluate_splits=args.evaluate_splits,
+        )
+        all_results["updated_at_utc"] = datetime.now(timezone.utc).isoformat()
         save_json(output_root / "summary.json", all_results)
 
     print("\n[Done] Baseline optimization sweep finished.")

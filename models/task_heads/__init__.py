@@ -1,1 +1,2 @@
+from .feature_projector import FeatureProjectionNetwork
 from .segmentation_head import SegmentationHead

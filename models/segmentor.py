@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from models.backbone.unet import UNetBackbone
+from models.task_heads.feature_projector import FeatureProjectionNetwork
 from models.task_heads.segmentation_head import SegmentationHead
 
 
@@ -85,11 +86,30 @@ class DamageSegmentor(nn.Module):
         num_classes: int,
         in_channels: int = 3,
         base_channels: int = 32,
+        feature_projector_config: Dict | None = None,
         loss_config: Dict | None = None,
     ) -> None:
         super().__init__()
         self.backbone = UNetBackbone(in_channels=in_channels, base_channels=base_channels)
-        self.segmentation_head = SegmentationHead(in_channels=self.backbone.out_channels, num_classes=num_classes)
+        projector_cfg = feature_projector_config or {}
+        projector_enabled = bool(projector_cfg.get("enabled", False))
+
+        if projector_enabled:
+            projector_out_channels = int(projector_cfg.get("out_channels", self.backbone.out_channels))
+            self.feature_projector = FeatureProjectionNetwork(
+                in_channels=self.backbone.out_channels,
+                out_channels=projector_out_channels,
+                hidden_channels=projector_cfg.get("hidden_channels"),
+                num_layers=int(projector_cfg.get("num_layers", 2)),
+                dropout=float(projector_cfg.get("dropout", 0.0)),
+                use_residual=bool(projector_cfg.get("use_residual", True)),
+            )
+            seg_head_in_channels = projector_out_channels
+        else:
+            self.feature_projector = nn.Identity()
+            seg_head_in_channels = self.backbone.out_channels
+
+        self.segmentation_head = SegmentationHead(in_channels=seg_head_in_channels, num_classes=num_classes)
         self.loss_config = loss_config or {}
 
     def _loss_weights(self) -> Tuple[float, float, float, float]:
@@ -102,7 +122,8 @@ class DamageSegmentor(nn.Module):
 
     def forward(self, images: torch.Tensor) -> Dict[str, torch.Tensor]:
         features, pyramid = self.backbone(images)
-        logits = self.segmentation_head(features)
+        projected_features = self.feature_projector(features)
+        logits = self.segmentation_head(projected_features)
 
         # Week 2 and Week 3 hooks:
         # - projection embeddings from features/pyramid
@@ -111,6 +132,7 @@ class DamageSegmentor(nn.Module):
         return {
             "logits": logits,
             "features": features,
+            "projected_features": projected_features,
             "pyramid": pyramid,
         }
 
