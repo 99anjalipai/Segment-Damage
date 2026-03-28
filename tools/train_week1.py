@@ -223,10 +223,12 @@ def train() -> None:
     print(f"[Info] Train batches: {len(train_loader)} | Val batches: {len(val_loader)}")
 
     print("[Stage] Model loading...")
+    model_cfg = cfg.get("model", {})
     model = DamageSegmentor(
-        num_classes=cfg["model"]["num_classes"],
-        in_channels=cfg["model"].get("in_channels", 3),
-        base_channels=cfg["model"].get("base_channels", 32),
+        num_classes=model_cfg["num_classes"],
+        in_channels=model_cfg.get("in_channels", 3),
+        base_channels=model_cfg.get("base_channels", 32),
+        feature_projector_config=model_cfg.get("feature_projector", {}),
         loss_config=cfg["training"].get("loss", {}),
     ).to(device)
 

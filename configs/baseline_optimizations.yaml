@@ -44,54 +44,54 @@ experiments:
           cooldown: 0
           min_lr: 0.000001
 
-  - name: sgd_cosine
-    overrides:
-      training:
-        lr: 0.01
-        weight_decay: 0.0001
-        loss:
-          name: ce_dice
-          focal_gamma: 2.0
-          focal_alpha: 0.25
-          weights:
-            ce: 1.0
-            dice: 1.0
-            focal: 1.0
-        optimizer:
-          name: sgd
-          momentum: 0.9
-          nesterov: true
-        scheduler:
-          name: cosine_annealing
-          t_max: 25
-          eta_min: 0.000001
+  # - name: sgd_cosine
+  #   overrides:
+  #     training:
+  #       lr: 0.01
+  #       weight_decay: 0.0001
+  #       loss:
+  #         name: ce_dice
+  #         focal_gamma: 2.0
+  #         focal_alpha: 0.25
+  #         weights:
+  #           ce: 1.0
+  #           dice: 1.0
+  #           focal: 1.0
+  #       optimizer:
+  #         name: sgd
+  #         momentum: 0.9
+  #         nesterov: true
+  #       scheduler:
+  #         name: cosine_annealing
+  #         t_max: 25
+  #         eta_min: 0.000001
 
-  - name: rmsprop_plateau
-    overrides:
-      training:
-        lr: 0.001
-        weight_decay: 0.0001
-        loss:
-          name: ce_dice
-          focal_gamma: 2.0
-          focal_alpha: 0.25
-          weights:
-            ce: 1.0
-            dice: 1.0
-            focal: 1.0
-        optimizer:
-          name: rmsprop
-          momentum: 0.9
-          alpha: 0.99
-        scheduler:
-          name: reduce_on_plateau
-          mode: min
-          factor: 0.5
-          patience: 3
-          threshold: 0.0001
-          threshold_mode: rel
-          cooldown: 0
-          min_lr: 0.000001
+  # - name: rmsprop_plateau
+  #   overrides:
+  #     training:
+  #       lr: 0.001
+  #       weight_decay: 0.0001
+  #       loss:
+  #         name: ce_dice
+  #         focal_gamma: 2.0
+  #         focal_alpha: 0.25
+  #         weights:
+  #           ce: 1.0
+  #           dice: 1.0
+  #           focal: 1.0
+  #       optimizer:
+  #         name: rmsprop
+  #         momentum: 0.9
+  #         alpha: 0.99
+  #       scheduler:
+  #         name: reduce_on_plateau
+  #         mode: min
+  #         factor: 0.5
+  #         patience: 3
+  #         threshold: 0.0001
+  #         threshold_mode: rel
+  #         cooldown: 0
+  #         min_lr: 0.000001
 
   - name: adamw_focal_only
     overrides:
@@ -236,6 +236,37 @@ experiments:
         weight_decay: 0.0001
         loss:
           name: focal
+          use_gradient: true
+          gradient_foreground_class: 1
+          focal_gamma: 2.0
+          focal_alpha: 0.25
+          weights:
+            ce: 1.0
+            dice: 1.0
+            focal: 1.0
+            grad: 0.5
+        optimizer:
+          name: adamw
+        scheduler:
+          name: cosine_annealing
+          t_max: 25
+          eta_min: 0.000001
+
+  - name: adamw_feature_projector_ce_dice_focal_grad
+    overrides:
+      model:
+        feature_projector:
+          enabled: true
+          out_channels: 64
+          hidden_channels: 64
+          num_layers: 2
+          dropout: 0.1
+          use_residual: false
+      training:
+        lr: 0.001
+        weight_decay: 0.0001
+        loss:
+          name: ce_dice_focal
           use_gradient: true
           gradient_foreground_class: 1
           focal_gamma: 2.0
