@@ -1,0 +1,21 @@
+dataset:
+  yolo_data_yaml: data/yolo_seg/cardd_yolov8seg.yaml
+
+model:
+  pretrained_weights: yolov8n-seg.pt
+  imgsz: 512
+
+training:
+  epochs: 10
+  batch: 8
+  device: 0
+  project: outputs/yolov8seg
+  name: yolov8n_seg_baseline2
+  patience: 8
+  workers: 2
+  seed: 42
+
+evaluation:
+  conf: 0.25
+  iou: 0.5
+  split: val
