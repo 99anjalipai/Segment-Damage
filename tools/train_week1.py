@@ -419,6 +419,25 @@ def train() -> None:
     vis_every = cfg["training"].get("visualize_every", 10)
     vis_samples = cfg["training"].get("visualize_samples", 3)
 
+    start_epoch = 1
+    # Resume from best.pt if it exists
+    best_ckpt = output_dir / "best.pt"
+    if best_ckpt.exists():
+        print(f"[Info] Resuming from checkpoint: {best_ckpt}")
+        checkpoint = torch.load(best_ckpt, map_location=device)
+        model.load_state_dict(checkpoint["model_state"])
+        if "optimizer_state" in checkpoint:
+            optimizer.load_state_dict(checkpoint["optimizer_state"])
+        if "scheduler_state" in checkpoint and scheduler is not None and checkpoint["scheduler_state"] is not None:
+            scheduler.load_state_dict(checkpoint["scheduler_state"])
+        if "epoch" in checkpoint:
+            start_epoch = int(checkpoint["epoch"]) + 1
+        if "history" in checkpoint:
+            history = checkpoint["history"]
+        if "val_loss" in checkpoint:
+            best_val_loss = checkpoint["val_loss"]
+        print(f"[Info] Resumed at epoch {start_epoch}")
+
     if writer is not None:
         print(f"[Info] TensorBoard logging enabled at: {tb_dir}")
     if scheduler is not None:
@@ -429,7 +448,7 @@ def train() -> None:
 
     epochs = cfg["training"].get("epochs", 25)
     print("[Stage] Training...")
-    for epoch in range(1, epochs + 1):
+    for epoch in range(start_epoch, epochs + 1):
         model.train()
         running = {
             "loss_total": 0.0,

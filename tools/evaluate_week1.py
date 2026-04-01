@@ -607,6 +607,7 @@ def main() -> None:
         num_dent_classes=int(dent_cfg.get("num_classes", 0)) if cls_multilabel else None,
     )
     from torch.utils.data import DataLoader
+    print("Loading dataset and creating dataloader...")
     loader = DataLoader(
         dataset,
         batch_size=cfg["training"]["batch_size"],
@@ -614,6 +615,7 @@ def main() -> None:
         num_workers=cfg["training"].get("num_workers", 4),
         pin_memory=device.type == "cuda",
     )
+    print(f"[Info] Dataset loaded with {len(dataset)} samples. Evaluating on split: {args.split}")
 
     model = DamageSegmentor(
         num_classes=model_cfg["num_classes"],
@@ -624,9 +626,13 @@ def main() -> None:
         loss_config=cfg["training"].get("loss", {}),
     ).to(device)
 
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f"[Info] Model total parameters: {total_params}")
+
     checkpoint = torch.load(args.checkpoint, map_location=device)
     model.load_state_dict(checkpoint["model_state"])
 
+    print(f"[Stage] Running evaluation on {args.split} split with {len(loader)} batches...")
     metrics = evaluate(
         model=model,
         loader=loader,
