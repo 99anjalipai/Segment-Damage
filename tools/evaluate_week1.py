@@ -310,6 +310,52 @@ def denormalize_image(image: torch.Tensor) -> np.ndarray:
     img = torch.clamp(img, 0.0, 1.0)
     return img.permute(1, 2, 0).detach().cpu().numpy()
 
+def save_tsne_visualization(
+    embeddings: torch.Tensor,
+    targets: torch.Tensor | None,
+    targets_multi: torch.Tensor | None,
+    num_classes: int,
+    output_dir: Path,
+    cls_index_to_name: Dict[str, str] | None = None
+) -> None:
+    if embeddings is None or embeddings.numel() == 0 or embeddings.shape[0] < 2:
+        return
+
+    emb_np = embeddings.detach().cpu().numpy()
+    from sklearn.manifold import TSNE
+    tsne = TSNE(n_components=2, random_state=42)
+    reduced = tsne.fit_transform(emb_np)
+
+    fig, ax = plt.subplots(figsize=(10, 8))
+    
+    if targets_multi is not None:
+        tgt_np = targets_multi.detach().cpu().numpy()
+        for cls_idx in range(num_classes):
+            mask = tgt_np[:, cls_idx] > 0.5
+            if not mask.any():
+                continue
+            name = cls_index_to_name.get(str(cls_idx), f"Class {cls_idx}") if cls_index_to_name else f"Class {cls_idx}"
+            ax.scatter(reduced[mask, 0], reduced[mask, 1], label=name, alpha=0.6)
+    elif targets is not None:
+        tgt_np = targets.detach().cpu().numpy()
+        for cls_idx in range(num_classes):
+            mask = tgt_np == cls_idx
+            if not mask.any():
+                continue
+            name = cls_index_to_name.get(str(cls_idx), f"Class {cls_idx}") if cls_index_to_name else f"Class {cls_idx}"
+            ax.scatter(reduced[mask, 0], reduced[mask, 1], label=name, alpha=0.6)
+    else:
+        ax.scatter(reduced[:, 0], reduced[:, 1], alpha=0.6)
+
+    ax.set_title("t-SNE of Class Embeddings")
+    if targets_multi is not None or targets is not None:
+        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    fig.tight_layout()
+    vis_dir = output_dir / "visualizations"
+    vis_dir.mkdir(parents=True, exist_ok=True)
+    fig.savefig(vis_dir / "embeddings_tsne.png", dpi=150, bbox_inches='tight')
+    plt.close(fig)
+
 @torch.no_grad()
 def save_eval_visualizations(
     model: DamageSegmentor,
@@ -382,7 +428,7 @@ def evaluate(
     cls_multilabel: bool,
     cls_threshold: float,
     cls_num_classes: int,
-) -> Dict[str, float]:
+) -> tuple[Dict[str, float], torch.Tensor | None, torch.Tensor | None, torch.Tensor | None]:
     model.eval()
     iou_numer = torch.zeros(num_classes, dtype=torch.float64)
     iou_denom = torch.zeros(num_classes, dtype=torch.float64)
@@ -537,15 +583,24 @@ def evaluate(
             cls_targets=concat_targets_single,
             cls_targets_multi=concat_targets_multi,
         )
+        cls_centroid_distance_mean = cls_embedding_stats["cls_inter_class_centroid_distance_mean"]
+        cls_intra_distance = cls_embedding_stats["cls_per_class_intra_distance"]
+        cls_embedding_dim = cls_embedding_stats["cls_embedding_dim"]
+        cls_centroid_counts = cls_embedding_stats["cls_centroid_counts"]
+        cls_centroid_similarity = cls_embedding_stats["cls_centroid_cosine_similarity"]
+        cls_centroid_distance = cls_embedding_stats["cls_centroid_cosine_distance"]
     else:
-        cls_embedding_stats = embedding_separation_metrics(
-            embeddings=torch.empty((0, 0), dtype=torch.float32),
-            num_classes=int(cls_num_classes),
-            cls_targets=None,
-            cls_targets_multi=None,
-        )
+        concat_emb = None
+        concat_targets_single = None
+        concat_targets_multi = None
+        cls_embedding_dim = 0
+        cls_centroid_counts = []
+        cls_centroid_similarity = []
+        cls_centroid_distance = []
+        cls_centroid_distance_mean = 0.0
+        cls_intra_distance = []
 
-    return {
+    metrics_dict = {
         "mIoU": miou,
         "IoU_per_class": iou_per_class,
         "F1_proxy": f1_from_miou,
@@ -560,13 +615,15 @@ def evaluate(
         "cls_per_class_f1": cls_per_class["per_class_f1"],
         "cls_per_class_ap": cls_per_class["per_class_ap"],
         "cls_mAP": cls_per_class["mAP"],
-        "cls_embedding_dim": cls_embedding_stats["cls_embedding_dim"],
-        "cls_centroid_counts": cls_embedding_stats["cls_centroid_counts"],
-        "cls_centroid_cosine_similarity": cls_embedding_stats["cls_centroid_cosine_similarity"],
-        "cls_centroid_cosine_distance": cls_embedding_stats["cls_centroid_cosine_distance"],
-        "cls_inter_class_centroid_distance_mean": cls_embedding_stats["cls_inter_class_centroid_distance_mean"],
-        "cls_per_class_intra_distance": cls_embedding_stats["cls_per_class_intra_distance"],
+        "cls_embedding_dim": cls_embedding_dim,
+        "cls_centroid_counts": cls_centroid_counts,
+        "cls_centroid_cosine_similarity": cls_centroid_similarity,
+        "cls_centroid_cosine_distance": cls_centroid_distance,
+        "cls_inter_class_centroid_distance_mean": cls_centroid_distance_mean,
+        "cls_per_class_intra_distance": cls_intra_distance,
     }
+    
+    return metrics_dict, concat_emb, concat_targets_single, concat_targets_multi
 
 
 def main() -> None:
@@ -633,7 +690,7 @@ def main() -> None:
     model.load_state_dict(checkpoint["model_state"])
 
     print(f"[Stage] Running evaluation on {args.split} split with {len(loader)} batches...")
-    metrics = evaluate(
+    metrics, concat_emb, concat_targets_single, concat_targets_multi = evaluate(
         model=model,
         loader=loader,
         device=device,
@@ -654,6 +711,18 @@ def main() -> None:
     with open(metrics_path, "w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=2)
     print(f"[Info] Metrics saved to {metrics_path}")
+
+    if concat_emb is not None:
+        print(f"[Stage] Saving t-SNE embedding visualization...")
+        save_tsne_visualization(
+            embeddings=concat_emb,
+            targets=concat_targets_single,
+            targets_multi=concat_targets_multi,
+            num_classes=int(dent_cfg.get("num_classes", 0)),
+            output_dir=results_dir,
+            cls_index_to_name=cls_index_to_name
+        )
+        print(f"[Info] t-SNE plot saved as {results_dir / 'visualizations' / 'embeddings_tsne.png'}")
 
     # Save visualizations
     print(f"[Stage] Saving evaluation visualizations to {results_dir / 'visualizations'} ...")

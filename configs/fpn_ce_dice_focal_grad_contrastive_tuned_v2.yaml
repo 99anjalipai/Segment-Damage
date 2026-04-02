@@ -1,0 +1,81 @@
+dataset:
+  image_dir: data/CarDD_release/CarDD_release/CarDD_SOD/CarDD-TR/CarDD-TR-Image
+  mask_dir: data/CarDD_release/CarDD_release/CarDD_SOD/CarDD-TR/CarDD-TR-Mask
+  train_split: data/splits/train.json
+  val_split: data/splits/val.json
+  test_split: data/splits/test.json
+  image_size: 512
+  class_labels_file: data/splits/dent_class_labels.json
+  default_class_label: 0
+  infer_class_from_mask: false
+
+model:
+  name: unet
+  in_channels: 3
+  base_channels: 48  # Increased from 32
+  num_classes: 2
+  feature_projector:
+    enabled: true
+    out_channels: 64
+    hidden_channels: 64
+    num_layers: 2
+    dropout: 0.1
+    use_residual: false
+  dent_classification:
+    enabled: true
+    num_classes: 6
+    hidden_channels: 64
+    dropout: 0.1
+
+training:
+  epochs: 40  # Increased from 10
+  batch_size: 4
+  lr: 0.0005  # Lowered for stability
+  weight_decay: 0.0001
+  loss:
+    name: ce_dice_focal
+    use_gradient: true
+    gradient_foreground_class: 1
+    focal_gamma: 2.0
+    focal_alpha: 0.25
+    weights:
+      ce: 1.0
+      dice: 4.0  # Increased
+      focal: 1.0  # Lowered
+      grad: 0.5   # Increased
+      contrastive: 0.5  # Increased
+      cls: 0.2
+      cls_contrastive: 0.5
+    contrastive:
+      enabled: true
+      foreground_class_index: 1
+      tiny_area_threshold_pixels: 5000  # Lowered for small damages
+      temperature: 0.1
+      max_tiny_samples: 1024
+      max_other_samples: 4096
+      min_tiny_pixels: 16
+    classification:
+      enabled: true
+      multilabel: true
+      threshold: 0.5
+      class_contrastive:
+        enabled: true
+        temperature: 0.1
+        always_on_pairwise: true
+  scheduler:
+    name: cosine_annealing
+    t_max: 25
+    eta_min: 0.000001
+    factor: 0.5
+    patience: 3
+    mode: min
+    threshold: 0.0001
+    threshold_mode: rel
+    cooldown: 0
+    min_lr: 0.000001
+  num_workers: 0
+  output_dir: outputs/fpn_ce_dice_focal_grad_contrastive_tuned_v2
+  visualize_every: 10
+  visualize_samples: 3
+  tensorboard: true
+  tensorboard_dir: outputs/fpn_ce_dice_focal_grad_contrastive_tuned_v2/tensorboard
