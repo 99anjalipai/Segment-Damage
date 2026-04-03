@@ -1,0 +1,5 @@
+experiment,split,weights,pretrained_weights,imgsz,batch,epochs,mIoU,F1_proxy,DET_l,tiny_samples,tiny_true_positive,tiny_false_negative
+yolov8s_seg_512_e25,val,runs/segment/outputs/yolov8seg_optimizations/yolov8s_seg_512_e25/weights/best.pt,yolov8s-seg.pt,512,8,25,0.7456559101103168,0.8542988406726674,0.5714285714285714,7,4,3
+yolov8s_seg_640_e25,val,runs/segment/outputs/yolov8seg_optimizations/yolov8s_seg_640_e25/weights/best.pt,yolov8s-seg.pt,640,8,25,0.741453401521251,0.8515340127660638,0.2857142857142857,7,2,5
+yolov8n_seg_640_e25,val,runs/segment/outputs/yolov8seg_optimizations/yolov8n_seg_640_e25/weights/best.pt,yolov8n-seg.pt,640,8,25,0.734841655171222,0.8471570335895537,0.5714285714285714,7,4,3
+yolov8n_seg_512_e10,val,runs/segment/outputs/yolov8seg_optimizations/yolov8n_seg_512_e104/weights/best.pt,yolov8n-seg.pt,512,8,10,0.6898953228595281,0.8164947420437063,0.2857142857142857,7,2,5
