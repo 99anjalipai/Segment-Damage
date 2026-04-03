@@ -173,13 +173,10 @@ def main():
                                 "license_plate": license_plate,
                             }
                             try:
-                                # Import prompt builder
-                                from claim_prompts import get_detailed_claim_prompt
-                                qwen_event_description = get_detailed_claim_prompt(event_description, num_images=len(images))
                                 drafter = ClaimDraftCore(provider="qwen-vl", model_name="Qwen/Qwen1.5-0.5B-Chat")
                                 claim_draft = drafter.generate_draft(
                                     detected_damage="Detected damage on multiple images.",
-                                    event_description=qwen_event_description,
+                                    event_description=event_description,
                                     images=images,
                                     masks=masks,
                                     user_info=user_info,

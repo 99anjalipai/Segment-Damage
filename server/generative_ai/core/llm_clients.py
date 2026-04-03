@@ -57,9 +57,47 @@ class QwenVLLLMClient(BaseLLMClient):
         except KeyError:
             # Safely build prompt if strict template fails due to missing keys in Qwen mode
             prompt = f"Write an insurance claim for this incident: {prompt_vars.get('event_description')} with damage: {prompt_vars.get('detected_damage')}"
-        
-        result = self.pipe(prompt, max_new_tokens=512)
-        return result[0]["generated_text"] if isinstance(result, list) else str(result)
+
+        # Add an explicit anchor so completion-style models begin at Section 1.
+        anchored_prompt = (
+            f"{prompt}\n\n"
+            "Start your response now. Begin exactly with:\n"
+            "### 1. Insurance Claim Draft Letter\n"
+        )
+
+        def _run_generation(input_prompt: str, token_budget: int):
+            try:
+                return self.pipe(
+                    input_prompt,
+                    max_new_tokens=token_budget,
+                    return_full_text=False,
+                    do_sample=False,
+                )
+            except TypeError:
+                # Backward-compatible fallback for older transformers pipeline signatures.
+                return self.pipe(input_prompt, max_new_tokens=token_budget)
+
+        result = _run_generation(anchored_prompt, 900)
+        generated_text = result[0]["generated_text"] if isinstance(result, list) else str(result)
+
+        # Defensive cleanup: some text-generation pipelines still echo input text.
+        if generated_text.startswith(anchored_prompt):
+            generated_text = generated_text[len(anchored_prompt):].lstrip()
+
+        # Retry once if output is malformed/truncated (e.g., only "6." or missing Section 1 heading).
+        if "### 1. Insurance Claim Draft Letter" not in generated_text or len(generated_text.strip()) < 120:
+            retry_prompt = (
+                f"{anchored_prompt}\n"
+                "Do not continue numbering from prior text. Start at Section 1 and include all five sections.\n"
+            )
+            retry_result = _run_generation(retry_prompt, 1100)
+            retry_text = retry_result[0]["generated_text"] if isinstance(retry_result, list) else str(retry_result)
+            if retry_text.startswith(retry_prompt):
+                retry_text = retry_text[len(retry_prompt):].lstrip()
+            if len(retry_text.strip()) > len(generated_text.strip()):
+                generated_text = retry_text
+
+        return generated_text
 
 def get_llm_client(provider: str, api_key: str, model_name: str):
     if provider == "qwen-vl":

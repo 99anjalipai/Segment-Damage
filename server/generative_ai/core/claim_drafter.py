@@ -1,7 +1,3 @@
-import os
-from langchain_google_genai import ChatGoogleGenerativeAI
-from generative_ai.prompts.claim_prompts import CLAIM_DRAFT_PROMPT_TEMPLATE
-
 DEFAULT_POLICY_TEMPLATE = """
 STANDARD AUTO INSURANCE POLICY - COVERAGE SUMMARY
 * Comprehensive & Collision Coverage: Included.
