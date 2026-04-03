@@ -1,0 +1,36 @@
+output_root: outputs/yolov8seg_optimizations
+comparison_split: val
+evaluate_splits:
+  - val
+  - test
+tiny_area_threshold: 5000
+visualize_samples: 3
+
+experiments:
+  - name: yolov8n_seg_512_e10
+    overrides:
+      pretrained_weights: yolov8n-seg.pt
+      imgsz: 512
+      batch: 8
+      epochs: 10
+
+  - name: yolov8n_seg_640_e25
+    overrides:
+      pretrained_weights: yolov8n-seg.pt
+      imgsz: 640
+      batch: 8
+      epochs: 25
+
+  - name: yolov8s_seg_512_e25
+    overrides:
+      pretrained_weights: yolov8s-seg.pt
+      imgsz: 512
+      batch: 8
+      epochs: 25
+
+  - name: yolov8s_seg_640_e25
+    overrides:
+      pretrained_weights: yolov8s-seg.pt
+      imgsz: 640
+      batch: 8
+      epochs: 25
