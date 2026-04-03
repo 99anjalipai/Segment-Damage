@@ -1,7 +1,7 @@
 from generative_ai.prompts.claim_prompts import CLAIM_DRAFT_PROMPT_TEMPLATE
 
 class BaseLLMClient:
-    def generate(self, prompt_vars: dict) -> str:
+    def generate(self, prompt_vars: dict, images=None, masks=None) -> str:
         raise NotImplementedError("Subclasses must implement generate()")
 
 class GeminiLLMClient(BaseLLMClient):
@@ -14,7 +14,8 @@ class GeminiLLMClient(BaseLLMClient):
         )
         self.chain = CLAIM_DRAFT_PROMPT_TEMPLATE | self.llm
 
-    def generate(self, prompt_vars: dict) -> str:
+    def generate(self, prompt_vars: dict, images=None, masks=None) -> str:
+        # If images/masks are provided and the model supports vision, pass them (future extension)
         response = self.chain.invoke(prompt_vars)
         return response.content
 
@@ -29,22 +30,35 @@ class OpenAILLMClient(BaseLLMClient):
         )
         self.chain = CLAIM_DRAFT_PROMPT_TEMPLATE | self.llm
 
-    def generate(self, prompt_vars: dict) -> str:
+    def generate(self, prompt_vars: dict, images=None, masks=None) -> str:
         response = self.chain.invoke(prompt_vars)
         return response.content
 
 # Qwen-VL (Vision-Language) integration (using Transformers pipeline)
 class QwenVLLLMClient(BaseLLMClient):
     def __init__(self, model_name):
+        # We handle text generation for Qwen-VL using Huggingface
+        # If Qwen-VL-Chat model is available on machine or huggingface:
         from transformers import pipeline
-        self.pipe = pipeline("text-generation", model=model_name)
-        # For real VLM, use pipeline("image-to-text", ...) or similar if available
-
-    def generate(self, prompt_vars: dict) -> str:
-        # Compose prompt from template
-        prompt = CLAIM_DRAFT_PROMPT_TEMPLATE.format(**prompt_vars)
+        import torch
+        try:
+            # Force CPU for the language model to prevent MPS memory allocation limits/crashes
+            # MPS on some Macs crashes when allocating >4GB continuously for LLM temp tensors
+            self.pipe = pipeline("text-generation", model=model_name, max_new_tokens=1000, device=torch.device("cpu"))
+        except Exception:
+            # Fallback to tiny models if memory is tight for demonstration
+            self.pipe = pipeline("text-generation", model="Qwen/Qwen1.5-0.5B-Chat", max_new_tokens=500, device=torch.device("cpu"))
+    
+    def generate(self, prompt_vars: dict, images=None, masks=None) -> str:
+        # If images/masks are provided and the pipeline supports them, pass them (future extension)
+        from generative_ai.prompts.claim_prompts import CLAIM_DRAFT_PROMPT_TEMPLATE
+        try:
+            prompt = CLAIM_DRAFT_PROMPT_TEMPLATE.format(**prompt_vars)
+        except KeyError:
+            # Safely build prompt if strict template fails due to missing keys in Qwen mode
+            prompt = f"Write an insurance claim for this incident: {prompt_vars.get('event_description')} with damage: {prompt_vars.get('detected_damage')}"
+        
         result = self.pipe(prompt, max_new_tokens=512)
-        # Huggingface pipeline returns a list of dicts
         return result[0]["generated_text"] if isinstance(result, list) else str(result)
 
 def get_llm_client(provider: str, api_key: str, model_name: str):

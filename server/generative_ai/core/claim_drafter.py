@@ -29,12 +29,22 @@ class ClaimDraftCore:
         # Add more defaults as needed
         return None
 
-    def generate_draft(self, detected_damage: str, event_description: str, insurance_context: str = None) -> str:
+    def generate_draft(self, detected_damage: str, event_description: str, insurance_context: str = None, images=None, masks=None,
+                      user_info=None, insurance_info=None, incident_info=None, vehicle_info=None) -> str:
         if not insurance_context:
             insurance_context = DEFAULT_POLICY_TEMPLATE
         prompt_vars = {
             "detected_damage": detected_damage,
             "event_description": event_description,
-            "insurance_context": insurance_context
+            "insurance_context": insurance_context,
         }
-        return self.llm.generate(prompt_vars)
+        # Merge in all additional info
+        if user_info:
+            prompt_vars.update(user_info)
+        if insurance_info:
+            prompt_vars.update(insurance_info)
+        if incident_info:
+            prompt_vars.update(incident_info)
+        if vehicle_info:
+            prompt_vars.update(vehicle_info)
+        return self.llm.generate(prompt_vars, images=images, masks=masks)
