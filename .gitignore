@@ -6,3 +6,5 @@ __pycache__/
 *.pth
 *.ckpt
 .DS_Store
+
+server/.streamlit/secrets.toml

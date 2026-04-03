@@ -7,6 +7,7 @@ This project provides:
 - A modular U-Net segmentation pipeline.
 - Flexible loss composition (CE, Dice, Focal, Gradient Boundary, and hybrids).
 - Optional feature projection module before segmentation logits.
+- Optional dent classification task head for multi-task training.
 - Automated experiment sweeps with per-run config generation.
 - Structured metric summaries with DET_l-first ranking for tiny-damage performance.
 
@@ -163,6 +164,31 @@ Core configuration groups:
 - model: backbone channels, class count, optional feature projector settings.
 - training: epochs, batch size, optimizer, scheduler, loss composition, logging/output paths.
 
+Optional dent classification setup:
+
+- Set model.dent_classification.enabled: true.
+- Provide dataset.class_labels_file as a JSON map from sample id to class indices.
+- Enable auxiliary classification loss with training.loss.classification.enabled: true.
+- For multi-label classification set training.loss.classification.multilabel: true.
+
+Generate class labels directly from CarDD COCO annotations:
+
+```bash
+python tools/prepare_dent_class_labels.py \
+  --annotations \
+    data/CarDD_release/CarDD_release/CarDD_COCO/annotations/instances_train2017.json \
+    data/CarDD_release/CarDD_release/CarDD_COCO/annotations/instances_val2017.json \
+    data/CarDD_release/CarDD_release/CarDD_COCO/annotations/instances_test2017.json \
+  --output data/splits/dent_class_labels.json \
+  --label-type multilabel
+```
+
+Then set in config:
+
+- dataset.class_labels_file: data/splits/dent_class_labels.json
+- model.dent_classification.num_classes: number of CarDD categories in your label map
+- training.loss.classification.multilabel: true
+
 Supported loss names:
 
 - ce
@@ -185,6 +211,14 @@ Evaluation outputs include:
 - IoU_per_class
 - F1_proxy
 - tiny_true_positive and tiny_false_negative
+- Multi-label dent classification metrics:
+  - cls_accuracy (exact-match)
+  - cls_micro_f1 and cls_macro_f1
+  - cls_per_class_precision, cls_per_class_recall, cls_per_class_f1
+  - cls_per_class_ap and cls_mAP
+  - Embedding separation diagnostics:
+    - cls_centroid_cosine_distance and cls_inter_class_centroid_distance_mean
+    - cls_per_class_intra_distance
 
 For sweep ranking, leaderboards are sorted in this order:
 
@@ -213,6 +247,7 @@ The table below reflects the current top experiments from outputs/baseline_optim
 | 1 | adamw_cosine | 0.6667 | 0.5995 | 0.7496 |
 | 2 | adamw_plateau | 0.5000 | 0.6039 | 0.7531 |
 | 3 | adamw_ce_focal | 0.5000 | 0.5851 | 0.7383 |
+| 4 | feature_projector_ce_dice_focal_grad | 0.5000 | 0.5597 | 0.7177 |
 
 ### Qualitative Eval Samples (Val Split)
 
@@ -227,6 +262,29 @@ The table below reflects the current top experiments from outputs/baseline_optim
 #### Rank 3: adamw_ce_focal
 
 ![adamw_ce_focal eval samples](assets/readme/best_eval_samples/adamw_ce_focal_val_eval_samples.png)
+
+## Feature Projector Multi-Task Result (Validation)
+
+The table below summarizes the latest `feature_projector_ce_dice_focal_grad` run evaluated on the val split from `outputs/feature_projector_ce_dice_focal_grad/eval/val/metrics.json`.
+
+| Experiment | DET_l | mIoU | F1_proxy | cls_accuracy | cls_micro_f1 | cls_macro_f1 | cls_mAP |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| feature_projector_ce_dice_focal_grad | 0.5000 | 0.5597 | 0.7177 | 0.2630 | 0.6153 | 0.3734 | 0.4839 |
+
+### Per-Class AP (Val)
+
+| Class | AP |
+| --- | ---: |
+| dent | 0.6437 |
+| scratch | 0.6202 |
+| crack | 0.2680 |
+| glass shatter | 0.9007 |
+| lamp broken | 0.2874 |
+| tire flat | 0.1836 |
+
+### Qualitative Eval Samples (feature_projector_ce_dice_focal_grad, Val)
+
+![feature_projector_ce_dice_focal_grad eval samples](assets/readme/best_eval_samples/feature_projector_ce_dice_focal_grad_val_eval_samples.png)
 
 ## Output Convention
 

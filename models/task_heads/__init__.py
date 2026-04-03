@@ -1,2 +1,3 @@
+from .dent_classification_head import DentClassificationHead
 from .feature_projector import FeatureProjectionNetwork
 from .segmentation_head import SegmentationHead
