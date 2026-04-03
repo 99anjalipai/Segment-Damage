@@ -629,6 +629,23 @@ def evaluate(
 def main() -> None:
     args = parse_args()
     cfg = load_config(args.config)
+    training_cfg = cfg.get("training", {})
+    output_dir = Path(training_cfg.get("output_dir", "outputs/week1_unet"))
+
+    # If user didn't override defaults, follow the configured training output directory.
+    checkpoint_path = Path(args.checkpoint)
+    if args.checkpoint == "outputs/week1_unet/best.pt":
+        candidate_best = output_dir / "best.pt"
+        candidate_last = output_dir / "last.pt"
+        if candidate_best.exists():
+            checkpoint_path = candidate_best
+        elif candidate_last.exists():
+            checkpoint_path = candidate_last
+
+    results_dir_arg = Path(args.results_dir)
+    if args.results_dir == "outputs/week1_unet/eval":
+        results_dir_arg = output_dir / "eval"
+
     model_cfg = cfg.get("model", {})
     dent_cfg = model_cfg.get("dent_classification", {})
     cls_cfg = cfg.get("training", {}).get("loss", {}).get("classification", {})
@@ -686,7 +703,13 @@ def main() -> None:
     total_params = sum(p.numel() for p in model.parameters())
     print(f"[Info] Model total parameters: {total_params}")
 
-    checkpoint = torch.load(args.checkpoint, map_location=device)
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(
+            f"Checkpoint not found at {checkpoint_path}. "
+            f"Pass --checkpoint explicitly or verify training.output_dir in your config."
+        )
+
+    checkpoint = torch.load(checkpoint_path, map_location=device)
     model.load_state_dict(checkpoint["model_state"])
 
     print(f"[Stage] Running evaluation on {args.split} split with {len(loader)} batches...")
@@ -705,7 +728,7 @@ def main() -> None:
     print(json.dumps(metrics, indent=2))
 
     # Save metrics to results dir
-    results_dir = Path(args.results_dir)
+    results_dir = results_dir_arg
     results_dir.mkdir(parents=True, exist_ok=True)
     metrics_path = results_dir / "metrics.json"
     with open(metrics_path, "w", encoding="utf-8") as f:

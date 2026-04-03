@@ -419,6 +419,22 @@ def train() -> None:
     vis_every = cfg["training"].get("visualize_every", 10)
     vis_samples = cfg["training"].get("visualize_samples", 3)
 
+    early_stopping_cfg = cfg["training"].get("early_stopping", {})
+    early_stopping_enabled = early_stopping_cfg.get("enabled", False)
+    es_counter = 0
+    es_best_score = None
+
+    if early_stopping_enabled:
+        es_monitor = early_stopping_cfg.get("monitor", "val_loss")
+        es_patience = int(early_stopping_cfg.get("patience", 5))
+        es_min_delta = float(early_stopping_cfg.get("min_delta", 0.0))
+        es_mode = early_stopping_cfg.get("mode", "min")
+        es_best_score = float("inf") if es_mode == "min" else float("-inf")
+        print(
+            f"[Info] Early stopping enabled: monitor='{es_monitor}', "
+            f"patience={es_patience}, min_delta={es_min_delta}, mode='{es_mode}'"
+        )
+
     start_epoch = 1
     # Resume from best.pt if it exists
     best_ckpt = output_dir / "best.pt"
@@ -627,6 +643,29 @@ def train() -> None:
         if val_metrics["val_loss"] < best_val_loss:
             best_val_loss = val_metrics["val_loss"]
             torch.save(checkpoint, output_dir / "best.pt")
+
+        if early_stopping_enabled:
+            score = val_metrics.get(es_monitor)
+            if score is None:
+                print(f"[Warning] Early stopping monitor '{es_monitor}' not found in validation metrics. Skipping.")
+            else:
+                is_better = False
+                if es_mode == "min":
+                    if score < es_best_score - es_min_delta:
+                        is_better = True
+                else:  # max
+                    if score > es_best_score + es_min_delta:
+                        is_better = True
+
+                if is_better:
+                    es_best_score = score
+                    es_counter = 0
+                else:
+                    es_counter += 1
+
+                if es_counter >= es_patience:
+                    print(f"[Info] Early stopping triggered at epoch {epoch}")
+                    break
 
     with open(output_dir / "history.json", "w", encoding="utf-8") as f:
         json.dump(history, f, indent=2)
