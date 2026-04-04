@@ -6,5 +6,6 @@ __pycache__/
 *.pth
 *.ckpt
 .DS_Store
-
+.venv/
+CarDD_release/
 server/.streamlit/secrets.toml

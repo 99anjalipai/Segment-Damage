@@ -1,1 +1,1 @@
-from .unet import UNetBackbone
+from .mask2former import Mask2FormerBackbone

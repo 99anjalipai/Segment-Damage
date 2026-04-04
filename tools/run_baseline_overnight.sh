@@ -26,7 +26,7 @@ echo "[Info] Output root: ${OUTPUT_ROOT}"
 
 if [[ "${MODE}" == "test" ]]; then
   python tools/run_baseline_optimizations.py \
-    --base-config configs/week1_unet.yaml \
+    --base-config configs/mask2former_tiny.yaml \
     --experiments-config configs/baseline_optimizations.yaml \
     --output-root "${OUTPUT_ROOT}" \
     --evaluate-splits train val test \
@@ -37,7 +37,7 @@ if [[ "${MODE}" == "test" ]]; then
     2>&1 | tee "${LOG_FILE}"
 else
   python tools/run_baseline_optimizations.py \
-    --base-config configs/week1_unet.yaml \
+    --base-config configs/mask2former_tiny.yaml \
     --experiments-config configs/baseline_optimizations.yaml \
     --output-root "${OUTPUT_ROOT}" \
     --evaluate-splits train val test \

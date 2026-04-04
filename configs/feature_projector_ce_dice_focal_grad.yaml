@@ -1,6 +1,6 @@
 dataset:
-  image_dir: data/CarDD_release/CarDD_release/CarDD_SOD/CarDD-TR/CarDD-TR-Image
-  mask_dir: data/CarDD_release/CarDD_release/CarDD_SOD/CarDD-TR/CarDD-TR-Mask
+  image_dir: CarDD_release/CarDD_SOD/CarDD-TR/CarDD-TR-Image
+  mask_dir: CarDD_release/CarDD_SOD/CarDD-TR/CarDD-TR-Mask
   train_split: data/splits/train.json
   val_split: data/splits/val.json
   test_split: data/splits/test.json

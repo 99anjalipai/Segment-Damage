@@ -5,65 +5,51 @@ dataset:
   val_split: data/splits/val.json
   test_split: data/splits/test.json
   image_size: 512
-  class_labels_file: data/splits/dent_class_labels.json
+  class_labels_file: null
   default_class_label: 0
   infer_class_from_mask: false
 
 model:
-  name: unet
-  in_channels: 3
-  base_channels: 48  # Increased from 32
+  name: mask2former
   num_classes: 2
-  feature_projector:
-    enabled: true
-    out_channels: 64
-    hidden_channels: 64
-    num_layers: 2
-    dropout: 0.1
-    use_residual: false
-  dent_classification:
-    enabled: true
-    num_classes: 6
-    hidden_channels: 64
-    dropout: 0.1
+  pretrained_model_name: facebook/mask2former-swin-base-ade-semantic
 
 training:
-  epochs: 40  # Increased from 10
-  batch_size: 4
-  lr: 0.0005  # Lowered for stability
+  epochs: 10
+  batch_size: 2
+  lr: 0.0001
   weight_decay: 0.0001
   loss:
-    name: ce_dice_focal
-    use_gradient: true
+    name: ce_dice  # options: ce | dice | focal | grad | ce_dice | ce_focal | dice_focal | ce_dice_focal
+    use_gradient: false
     gradient_foreground_class: 1
     focal_gamma: 2.0
     focal_alpha: 0.25
     weights:
       ce: 1.0
-      dice: 4.0  # Increased
-      focal: 1.0  # Lowered
-      grad: 0.5   # Increased
-      contrastive: 0.5  # Increased
-      cls: 0.2
-      cls_contrastive: 0.5
+      dice: 1.0
+      focal: 1.0
+      grad: 1.0
+      contrastive: 0.2
+      cls: 1.0
+      cls_contrastive: 0.2
     contrastive:
-      enabled: true
+      enabled: false
       foreground_class_index: 1
-      tiny_area_threshold_pixels: 5000  # Lowered for small damages
+      tiny_area_threshold_pixels: 2048
       temperature: 0.1
       max_tiny_samples: 1024
       max_other_samples: 4096
       min_tiny_pixels: 16
     classification:
-      enabled: true
+      enabled: false
       multilabel: true
       threshold: 0.5
       class_contrastive:
-        enabled: true
+        enabled: false
         temperature: 0.1
-        always_on_pairwise: true
   scheduler:
-    name: cosine_annealing
+    name: cosine_annealing  # options: cosine_annealing | reduce_on_plateau
     t_max: 25
     eta_min: 0.000001
     factor: 0.5
@@ -74,8 +60,8 @@ training:
     cooldown: 0
     min_lr: 0.000001
   num_workers: 0
-  output_dir: outputs/fpn_ce_dice_focal_grad_contrastive_tuned_v2
+  output_dir: outputs/mask2former_base
   visualize_every: 10
   visualize_samples: 3
   tensorboard: true
-  tensorboard_dir: outputs/fpn_ce_dice_focal_grad_contrastive_tuned_v2/tensorboard
+  tensorboard_dir: outputs/mask2former_base/tensorboard

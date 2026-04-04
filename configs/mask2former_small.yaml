@@ -1,6 +1,6 @@
 dataset:
-  image_dir: data/CarDD_release/CarDD_release/CarDD_SOD/CarDD-TR/CarDD-TR-Image
-  mask_dir: data/CarDD_release/CarDD_release/CarDD_SOD/CarDD-TR/CarDD-TR-Mask
+  image_dir: CarDD_release/CarDD_SOD/CarDD-TR/CarDD-TR-Image
+  mask_dir: CarDD_release/CarDD_SOD/CarDD-TR/CarDD-TR-Mask
   train_split: data/splits/train.json
   val_split: data/splits/val.json
   test_split: data/splits/test.json
@@ -10,27 +10,14 @@ dataset:
   infer_class_from_mask: false
 
 model:
-  name: unet
-  in_channels: 3
-  base_channels: 32
+  name: mask2former
   num_classes: 2
-  feature_projector:
-    enabled: false
-    out_channels: 32
-    hidden_channels: 32
-    num_layers: 2
-    dropout: 0.0
-    use_residual: true
-  dent_classification:
-    enabled: false
-    num_classes: 6
-    hidden_channels: 64
-    dropout: 0.1
+  pretrained_model_name: facebook/mask2former-swin-small-ade-semantic
 
 training:
   epochs: 10
-  batch_size: 8
-  lr: 0.001
+  batch_size: 4
+  lr: 0.0001
   weight_decay: 0.0001
   loss:
     name: ce_dice  # options: ce | dice | focal | grad | ce_dice | ce_focal | dice_focal | ce_dice_focal
@@ -73,8 +60,8 @@ training:
     cooldown: 0
     min_lr: 0.000001
   num_workers: 0
-  output_dir: outputs/week1_unet
+  output_dir: outputs/mask2former_small
   visualize_every: 10
   visualize_samples: 3
   tensorboard: true
-  tensorboard_dir: outputs/week1_unet/tensorboard
+  tensorboard_dir: outputs/mask2former_small/tensorboard

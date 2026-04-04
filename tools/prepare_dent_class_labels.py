@@ -8,9 +8,9 @@ from typing import Dict, List
 
 
 DEFAULT_ANNOTATIONS = [
-    "data/CarDD_release/CarDD_release/CarDD_COCO/annotations/instances_train2017.json",
-    "data/CarDD_release/CarDD_release/CarDD_COCO/annotations/instances_val2017.json",
-    "data/CarDD_release/CarDD_release/CarDD_COCO/annotations/instances_test2017.json",
+    "CarDD_release/CarDD_COCO/annotations/instances_train2017.json",
+    "CarDD_release/CarDD_COCO/annotations/instances_val2017.json",
+    "CarDD_release/CarDD_COCO/annotations/instances_test2017.json",
 ]
 
 
@@ -135,7 +135,7 @@ def main() -> None:
 
     payload = {
         "metadata": {
-            "sources": [str(p) for p in ann_paths],
+            "sources": [p.as_posix() for p in ann_paths],
             "label_type": args.label_type,
             "mode": args.mode,
             "background_index": int(args.background_index),

@@ -23,7 +23,7 @@ def parse_args() -> argparse.Namespace:
             "on train/val/test splits."
         )
     )
-    parser.add_argument("--base-config", type=str, default="configs/week1_unet.yaml")
+    parser.add_argument("--base-config", type=str, default="configs/mask2former_tiny.yaml")
     parser.add_argument(
         "--experiments-config",
         type=str,

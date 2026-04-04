@@ -31,10 +31,7 @@ def _load_model(model_name="fpn_ce_dice_focal_grad_contrastive_tuned_v2"):
     loss_cfg = cfg.get("training", {}).get("loss", {})
     model = DamageSegmentor(
         num_classes=model_cfg["num_classes"],
-        in_channels=model_cfg.get("in_channels", 3),
-        base_channels=model_cfg.get("base_channels", 32),
-        feature_projector_config=model_cfg.get("feature_projector", {}),
-        dent_classification_config=model_cfg.get("dent_classification", {}),
+        pretrained_model_name=model_cfg["pretrained_model_name"],
         loss_config=loss_cfg,
     )
     weights_path = ROOT / "outputs" / model_name / "best.pt"
@@ -51,9 +48,10 @@ def _load_model(model_name="fpn_ce_dice_focal_grad_contrastive_tuned_v2"):
     return model
 
 
-def segment_damage(image_array, model_name="fpn_ce_dice_focal_grad_contrastive_tuned_v2"):
+def segment_damage(image_array, model_name="mask2former_tiny"):
     """
-    Runs actual PyTorch Unet inference using the selected model.
+    Runs Mask2Former damage segmentation inference using the selected config name
+    (YAML stem under configs/ and matching folder under outputs/).
     """
     model = _load_model(model_name)
     # Process PIL image from numpy array

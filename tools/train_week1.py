@@ -100,7 +100,24 @@ def multilabel_metrics_from_counts(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Week 1 baseline training for damage segmentation.")
-    parser.add_argument("--config", type=str, default="configs/week1_unet.yaml")
+    parser.add_argument("--config", type=str, default="configs/mask2former_tiny.yaml")
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=None,
+        help="Override training.epochs from the config (e.g. 1 for smoke tests).",
+    )
+    parser.add_argument(
+        "--no-resume",
+        action="store_true",
+        help="Do not load best.pt from output_dir (start from pretrained weights).",
+    )
+    parser.add_argument(
+        "--max-train-batches",
+        type=int,
+        default=None,
+        help="Stop each training epoch after this many batches (smoke tests; omit for full epoch).",
+    )
     return parser.parse_args()
 
 
@@ -358,10 +375,13 @@ def train() -> None:
     print("[Stage] Parsing configuration...")
     args = parse_args()
     cfg = load_config(args.config)
+    if args.epochs is not None:
+        cfg.setdefault("training", {})["epochs"] = int(args.epochs)
     model_cfg = cfg.get("model", {})
     dent_cfg = model_cfg.get("dent_classification", {})
     cls_cfg = cfg.get("training", {}).get("loss", {}).get("classification", {})
-    cls_multilabel = bool(cls_cfg.get("multilabel", False))
+    cls_enabled = bool(cls_cfg.get("enabled", False))
+    cls_multilabel = cls_enabled and bool(cls_cfg.get("multilabel", False))
     cls_threshold = float(cls_cfg.get("threshold", 0.5))
 
     print("[Stage] Selecting device...")
@@ -394,10 +414,7 @@ def train() -> None:
     print("[Stage] Model loading...")
     model = DamageSegmentor(
         num_classes=model_cfg["num_classes"],
-        in_channels=model_cfg.get("in_channels", 3),
-        base_channels=model_cfg.get("base_channels", 32),
-        feature_projector_config=model_cfg.get("feature_projector", {}),
-        dent_classification_config=model_cfg.get("dent_classification", {}),
+        pretrained_model_name=model_cfg["pretrained_model_name"],
         loss_config=cfg["training"].get("loss", {}),
     ).to(device)
 
@@ -408,7 +425,7 @@ def train() -> None:
         epochs=cfg["training"].get("epochs", 25),
     )
 
-    output_dir = Path(cfg["training"].get("output_dir", "outputs/week1_unet"))
+    output_dir = Path(cfg["training"].get("output_dir", "outputs/mask2former_tiny"))
     output_dir.mkdir(parents=True, exist_ok=True)
     tb_enabled = cfg["training"].get("tensorboard", True)
     tb_dir = Path(cfg["training"].get("tensorboard_dir", output_dir / "tensorboard"))
@@ -438,7 +455,7 @@ def train() -> None:
     start_epoch = 1
     # Resume from best.pt if it exists
     best_ckpt = output_dir / "best.pt"
-    if best_ckpt.exists():
+    if not args.no_resume and best_ckpt.exists():
         print(f"[Info] Resuming from checkpoint: {best_ckpt}")
         checkpoint = torch.load(best_ckpt, map_location=device)
         model.load_state_dict(checkpoint["model_state"])
@@ -463,6 +480,9 @@ def train() -> None:
         )
 
     epochs = cfg["training"].get("epochs", 25)
+    max_train_batches = args.max_train_batches
+    if max_train_batches is not None:
+        print(f"[Info] max_train_batches={max_train_batches} (smoke test: partial epoch per step)")
     print("[Stage] Training...")
     for epoch in range(start_epoch, epochs + 1):
         model.train()
@@ -551,6 +571,8 @@ def train() -> None:
                 cls=f"{losses['loss_cls'].item():.4f}",
                 cls_ctr=f"{losses['loss_cls_contrastive'].item():.4f}",
             )
+            if max_train_batches is not None and num_batches >= max_train_batches:
+                break
 
         train_metrics = {k: v / max(num_batches, 1) for k, v in running.items()}
         if cls_multilabel and tp_per_class is not None and fp_per_class is not None and fn_per_class is not None:

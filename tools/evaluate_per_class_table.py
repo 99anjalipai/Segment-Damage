@@ -32,7 +32,7 @@ def generate_table_from_metrics(metrics_path, method_name="Ours (TinyDamage)"):
     }
 
     print("--- LaTeX Table Row Output ---")
-    print(f"%-15s & %-5s & %-5s & %-5s & %-5s \\\\" % ("Category", "U-Net", "YOLO", "M2F", method_name))
+    print(f"%-15s & %-5s & %-5s & %-5s & %-5s \\\\" % ("Category", "Mask2Former", "YOLO", "M2F", method_name))
     print("-" * 55)
     
     iou_per_class = metrics.get("IoU_per_class", [])

@@ -278,13 +278,13 @@ def load_class_label_index_to_name(class_labels_file: str | Path | None) -> Dict
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Week 1 baseline evaluation.")
-    parser.add_argument("--config", type=str, default="configs/week1_unet.yaml")
-    parser.add_argument("--checkpoint", type=str, default="outputs/week1_unet/best.pt")
+    parser.add_argument("--config", type=str, default="configs/mask2former_tiny.yaml")
+    parser.add_argument("--checkpoint", type=str, default="outputs/mask2former_tiny/best.pt")
     parser.add_argument("--tiny-area-threshold", type=int, default=1500)
     parser.add_argument(
         "--results-dir",
         type=str,
-        default="outputs/week1_unet/eval",
+        default="outputs/mask2former_tiny/eval",
         help="Directory to save evaluation metrics JSON."
     )
     parser.add_argument(
@@ -299,6 +299,13 @@ def parse_args() -> argparse.Namespace:
         default="val",
         choices=["train", "val", "test"],
         help="Which split to evaluate: train, val, or test (if available)."
+    )
+    parser.add_argument(
+        "--max-batches",
+        type=int,
+        default=None,
+        dest="max_batches",
+        help="Evaluate only this many batches (smoke tests; omit for full split).",
     )
     return parser.parse_args()
 
@@ -428,6 +435,7 @@ def evaluate(
     cls_multilabel: bool,
     cls_threshold: float,
     cls_num_classes: int,
+    max_batches: int | None = None,
 ) -> tuple[Dict[str, float], torch.Tensor | None, torch.Tensor | None, torch.Tensor | None]:
     model.eval()
     iou_numer = torch.zeros(num_classes, dtype=torch.float64)
@@ -447,6 +455,7 @@ def evaluate(
     all_cls_targets_single: list[torch.Tensor] = []
     all_cls_targets_multi: list[torch.Tensor] = []
 
+    n_batch = 0
     for batch in loader:
         images = batch["image"].to(device)
         masks = batch["mask"].to(device)
@@ -516,6 +525,10 @@ def evaluate(
                     tiny_tp += 1
                 elif has_true:
                     tiny_fn += 1
+
+        n_batch += 1
+        if max_batches is not None and n_batch >= max_batches:
+            break
 
     iou_per_class = (iou_numer / torch.clamp(iou_denom, min=1.0)).tolist()
     miou = float(sum(iou_per_class) / len(iou_per_class))
@@ -630,11 +643,11 @@ def main() -> None:
     args = parse_args()
     cfg = load_config(args.config)
     training_cfg = cfg.get("training", {})
-    output_dir = Path(training_cfg.get("output_dir", "outputs/week1_unet"))
+    output_dir = Path(training_cfg.get("output_dir", "outputs/mask2former_tiny"))
 
     # If user didn't override defaults, follow the configured training output directory.
     checkpoint_path = Path(args.checkpoint)
-    if args.checkpoint == "outputs/week1_unet/best.pt":
+    if args.checkpoint == "outputs/mask2former_tiny/best.pt":
         candidate_best = output_dir / "best.pt"
         candidate_last = output_dir / "last.pt"
         if candidate_best.exists():
@@ -643,13 +656,14 @@ def main() -> None:
             checkpoint_path = candidate_last
 
     results_dir_arg = Path(args.results_dir)
-    if args.results_dir == "outputs/week1_unet/eval":
+    if args.results_dir == "outputs/mask2former_tiny/eval":
         results_dir_arg = output_dir / "eval"
 
     model_cfg = cfg.get("model", {})
     dent_cfg = model_cfg.get("dent_classification", {})
     cls_cfg = cfg.get("training", {}).get("loss", {}).get("classification", {})
-    cls_multilabel = bool(cls_cfg.get("multilabel", False))
+    cls_enabled = bool(cls_cfg.get("enabled", False))
+    cls_multilabel = cls_enabled and bool(cls_cfg.get("multilabel", False))
     cls_threshold = float(cls_cfg.get("threshold", 0.5))
     cls_index_to_name = load_class_label_index_to_name(cfg.get("dataset", {}).get("class_labels_file"))
 
@@ -693,10 +707,7 @@ def main() -> None:
 
     model = DamageSegmentor(
         num_classes=model_cfg["num_classes"],
-        in_channels=model_cfg.get("in_channels", 3),
-        base_channels=model_cfg.get("base_channels", 32),
-        feature_projector_config=model_cfg.get("feature_projector", {}),
-        dent_classification_config=model_cfg.get("dent_classification", {}),
+        pretrained_model_name=model_cfg["pretrained_model_name"],
         loss_config=cfg["training"].get("loss", {}),
     ).to(device)
 
@@ -722,6 +733,7 @@ def main() -> None:
         cls_multilabel=cls_multilabel,
         cls_threshold=cls_threshold,
         cls_num_classes=int(dent_cfg.get("num_classes", 0)),
+        max_batches=args.max_batches,
     )
     if cls_index_to_name:
         metrics["cls_index_to_name"] = cls_index_to_name
