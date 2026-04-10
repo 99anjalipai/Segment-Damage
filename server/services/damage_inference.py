@@ -1,5 +1,8 @@
+"""Server-side segmentation helpers built on the shared model implementation."""
+
 import sys
 from pathlib import Path
+
 import numpy as np
 import cv2
 from PIL import Image
@@ -13,23 +16,26 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from models import DamageSegmentor
+from models import DamageSegmentor as SharedDamageSegmentor
 
-# Global model variables
-_model = None
+# Reuse one loaded model instance per config name inside the server process.
+_MODEL_CACHE: dict[str, SharedDamageSegmentor] = {}
 _device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 
 
-def _load_model(model_name="fpn_ce_dice_focal_grad_contrastive_tuned_v2"):
+def _get_model(model_name: str = "fpn_ce_dice_focal_grad_contrastive_tuned_v2") -> SharedDamageSegmentor:
     """
-    Loads the segmentation model and weights for the given model_name (folder in outputs/ and yaml in configs/).
+    Return the shared DamageSegmentor instance for the requested config.
     """
+    if model_name in _MODEL_CACHE:
+        return _MODEL_CACHE[model_name]
+
     config_path = ROOT / "configs" / f"{model_name}.yaml"
     with open(config_path, "r") as f:
         cfg = yaml.safe_load(f)
     model_cfg = cfg["model"]
     loss_cfg = cfg.get("training", {}).get("loss", {})
-    model = DamageSegmentor(
+    model = SharedDamageSegmentor(
         num_classes=model_cfg["num_classes"],
         in_channels=model_cfg.get("in_channels", 3),
         base_channels=model_cfg.get("base_channels", 32),
@@ -48,14 +54,15 @@ def _load_model(model_name="fpn_ce_dice_focal_grad_contrastive_tuned_v2"):
         model.load_state_dict(ckpt)
     model.to(_device)
     model.eval()
+    _MODEL_CACHE[model_name] = model
     return model
 
 
 def segment_damage(image_array, model_name="fpn_ce_dice_focal_grad_contrastive_tuned_v2"):
     """
-    Runs actual PyTorch Unet inference using the selected model.
+    Run inference with the shared DamageSegmentor model selected in the UI.
     """
-    model = _load_model(model_name)
+    model = _get_model(model_name)
     # Process PIL image from numpy array
     image = Image.fromarray(image_array)
     original_size = image.size  # (width, height)

@@ -1,11 +1,28 @@
 import streamlit as st
 import numpy as np
 import time
+import os
+import shutil
 from PIL import Image
 
 # Import separated services
-from services.segmentation import segment_damage, overlay_mask
+from services.damage_inference import segment_damage, overlay_mask
 from generative_ai.core.claim_drafter import ClaimDraftCore
+from generative_ai.core.llm_clients import DEFAULT_LOCAL_QWEN_MODEL, DEFAULT_LOCAL_QWEN_VL_MODEL, LocalQwenChatClient
+
+
+LOCAL_QWEN_MODEL_OPTIONS = [
+    "Qwen/Qwen2.5-0.5B-Instruct",
+    "Qwen/Qwen2.5-1.5B-Instruct",
+    "Qwen/Qwen2.5-3B-Instruct",
+    "Qwen/Qwen2.5-7B-Instruct",
+]
+
+LOCAL_QWEN_VL_MODEL_OPTIONS = [
+    "Qwen/Qwen2-VL-2B-Instruct",
+    "Qwen/Qwen2.5-VL-3B-Instruct",
+    "Qwen/Qwen2.5-VL-7B-Instruct",
+]
 
 st.set_page_config(
     page_title="AutoClaim AI - Vehicle Damage Assessment",
@@ -50,6 +67,72 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+
+@st.cache_resource(show_spinner=False)
+def load_local_qwen_chat_client(model_name: str):
+    return LocalQwenChatClient(model_name=model_name)
+
+
+@st.cache_resource(show_spinner=False)
+def load_claim_drafter(provider: str, model_name: str):
+    return ClaimDraftCore(provider=provider, model_name=model_name)
+
+
+MIN_FREE_BYTES_FOR_LOCAL_VL = 6 * 1024 * 1024 * 1024
+
+
+def generate_claim_with_fallback(local_qwen_vl_model_name: str, local_qwen_model_name: str, **draft_kwargs) -> tuple[str, str]:
+    if not can_attempt_local_qwen_vl():
+        drafter = load_claim_drafter("qwen", local_qwen_model_name)
+        return drafter.generate_draft(**draft_kwargs), "text"
+
+    try:
+        drafter = load_claim_drafter("qwen-vl", local_qwen_vl_model_name)
+        return drafter.generate_draft(**draft_kwargs), "vision"
+    except Exception as exc:
+        error_text = str(exc).lower()
+        recoverable_vl_error = (
+            "disk space" in error_text
+            or "unable to load a local qwen-vl model" in error_text
+            or "garbled output" in error_text
+            or "invalid claim draft perspective" in error_text
+            or "invalid claim-draft output" in error_text
+            or "incomplete sections" in error_text
+            or "out of memory" in error_text
+            or "mps backend out of memory" in error_text
+        )
+        if not recoverable_vl_error:
+            raise
+
+        drafter = load_claim_drafter("qwen", local_qwen_model_name)
+        return drafter.generate_draft(**draft_kwargs), "text"
+
+
+def get_free_disk_bytes() -> int:
+    return shutil.disk_usage(os.path.expanduser("~")).free
+
+
+def can_attempt_local_qwen_vl() -> bool:
+    return get_free_disk_bytes() >= MIN_FREE_BYTES_FOR_LOCAL_VL
+
+
+def get_configured_local_qwen_model_name() -> str:
+    secret_model_name = st.secrets.get("LOCAL_QWEN_MODEL_NAME")
+    return secret_model_name or os.getenv("LOCAL_QWEN_MODEL_NAME") or DEFAULT_LOCAL_QWEN_MODEL
+
+
+def get_configured_local_qwen_vl_model_name() -> str:
+    secret_model_name = st.secrets.get("LOCAL_QWEN_VL_MODEL_NAME")
+    return secret_model_name or os.getenv("LOCAL_QWEN_VL_MODEL_NAME") or DEFAULT_LOCAL_QWEN_VL_MODEL
+
+
+def get_local_qwen_model_name() -> str:
+    return st.session_state.get("local_qwen_model_name", get_configured_local_qwen_model_name())
+
+
+def get_local_qwen_vl_model_name() -> str:
+    return st.session_state.get("local_qwen_vl_model_name", get_configured_local_qwen_vl_model_name())
+
 def main():
     # Sidebar
     with st.sidebar:
@@ -60,6 +143,29 @@ def main():
         st.divider()
         st.markdown("### About")
         st.info("This tool overlays computer vision segmentation masks over vehicle damage and uses Generative AI to assist users in filing insurance claims based on context and event descriptions.")
+        if not can_attempt_local_qwen_vl():
+            free_gib = get_free_disk_bytes() / (1024 ** 3)
+            st.warning(f"Only {free_gib:.1f} GiB free on disk. Local vision claim drafting is disabled until you free at least 6 GiB.")
+
+        configured_local_qwen_model = get_configured_local_qwen_model_name()
+        available_qwen_models = list(dict.fromkeys([configured_local_qwen_model, *LOCAL_QWEN_MODEL_OPTIONS]))
+        default_qwen_index = available_qwen_models.index(configured_local_qwen_model)
+        st.session_state.local_qwen_model_name = st.selectbox(
+            "Local Chat Model",
+            available_qwen_models,
+            index=default_qwen_index,
+            help="Use a larger instruct model if your machine has enough memory. 1.5B is the default balance for CPU inference.",
+        )
+
+        configured_local_qwen_vl_model = get_configured_local_qwen_vl_model_name()
+        available_qwen_vl_models = list(dict.fromkeys([configured_local_qwen_vl_model, *LOCAL_QWEN_VL_MODEL_OPTIONS]))
+        default_qwen_vl_index = available_qwen_vl_models.index(configured_local_qwen_vl_model)
+        st.session_state.local_qwen_vl_model_name = st.selectbox(
+            "Claim Vision Model",
+            available_qwen_vl_models,
+            index=default_qwen_vl_index,
+            help="This multimodal model receives the original photos and the segmented overlays during claim drafting.",
+        )
 
     # Main Content
     st.markdown('<p class="main-header">Vehicle Damage Assessment & Claims Assistant</p>', unsafe_allow_html=True)
@@ -69,7 +175,6 @@ def main():
 
     with tab1:
         # --- Model selection ---
-        import os
         outputs_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "outputs")
         model_options = []
         for folder in os.listdir(outputs_dir):
@@ -77,6 +182,9 @@ def main():
             if os.path.isdir(folder_path) and os.path.exists(os.path.join(folder_path, "best.pt")):
                 model_options.append(folder)
         model_name = st.selectbox("Select Segmentation Model", model_options, index=0 if model_options else None)
+        local_qwen_model_name = get_local_qwen_model_name()
+        local_qwen_vl_model_name = get_local_qwen_vl_model_name()
+        st.caption(f"Claim drafting model: {local_qwen_vl_model_name}")
 
 
         # --- Collect all required info ---
@@ -122,10 +230,10 @@ def main():
                 with col_img1:
                     st.markdown("#### Original Images")
                     for img in images:
-                        st.image(img, use_container_width=True)
+                        st.image(img, width="stretch")
 
                 if st.button("🔍 Analyze Damage" + (" & Generate Claim" if generate_claim else "")):
-                    from services import segmentation as seg
+                    from services import damage_inference as seg
                     masks = []
                     overlayed_images = []
                     with st.spinner("1️⃣ Running segmentation model to detect damage on all images..."):
@@ -140,14 +248,14 @@ def main():
                     with col_img2:
                         st.markdown("#### Detected Damage")
                         for overlayed in overlayed_images:
-                            st.image(overlayed, use_container_width=True, caption="Damage highlighted in red.")
+                            st.image(overlayed, width="stretch", caption="Damage highlighted in red.")
 
                     st.success("Damage successfully analyzed.")
 
                     if generate_claim:
                         st.divider()
                         st.markdown("### 📝 AI Claim Assistant")
-                        with st.spinner("2️⃣ Drafting insurance claim using Qwen..."):
+                        with st.spinner(f"2️⃣ Drafting insurance claim using local Qwen-VL ({local_qwen_vl_model_name})..."):
                             # Compose all info for the claim generator
                             user_info = {
                                 "user_name": user_name,
@@ -173,8 +281,9 @@ def main():
                                 "license_plate": license_plate,
                             }
                             try:
-                                drafter = ClaimDraftCore(provider="qwen-vl", model_name="Qwen/Qwen1.5-0.5B-Chat")
-                                claim_draft = drafter.generate_draft(
+                                claim_draft, draft_mode = generate_claim_with_fallback(
+                                    local_qwen_vl_model_name=local_qwen_vl_model_name,
+                                    local_qwen_model_name=local_qwen_model_name,
                                     detected_damage="Detected damage on multiple images.",
                                     event_description=event_description,
                                     images=images,
@@ -184,6 +293,8 @@ def main():
                                     incident_info=incident_info,
                                     vehicle_info=vehicle_info
                                 )
+                                if draft_mode == "text":
+                                    st.warning("Vision claim drafting is unavailable on the current machine, so the app fell back to text-only Qwen for this draft.")
                                 st.markdown('<div class="claim-box">', unsafe_allow_html=True)
                                 st.markdown(claim_draft)
                                 st.markdown('</div>', unsafe_allow_html=True)
@@ -197,6 +308,9 @@ def main():
     with tab2:
         st.markdown("### 💬 Interactive Chat Assistant")
         st.info("Chat with our AI to easily gather your claim details in a natural way. You can text or use the image uploader below.")
+        local_qwen_model_name = get_local_qwen_model_name()
+        local_qwen_vl_model_name = get_local_qwen_vl_model_name()
+        st.caption(f"Local assistant model: {local_qwen_model_name}")
         
         # Adding image upload capabilities to the chat assistant
         chat_images = st.file_uploader("Upload Vehicle Images for the Chat Assistant (JPG/PNG)", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key="chat_uploader")
@@ -204,7 +318,7 @@ def main():
         if chat_images and "chat_images_processed" not in st.session_state:
             try:
                 images_opened = [Image.open(f) for f in chat_images]
-                from services import segmentation as seg
+                from services import damage_inference as seg
                 masks = []
                 overlayed_images = []
                 with st.spinner("Analyzing uploaded images..."):
@@ -222,8 +336,6 @@ def main():
                 # Automatically tell the LLM that images were added
                 if "messages" in st.session_state:
                     from langchain_core.messages import HumanMessage
-                    import base64
-                    from io import BytesIO
                     st.session_state.messages.append(HumanMessage(content="(System: User has uploaded vehicle photos with segmented damage. Acknowledge this and ask for details on how the accident occurred.)"))
             except Exception as e:
                 st.error(f"Error processing images: {e}")
@@ -237,94 +349,63 @@ def main():
                     with col_b:
                         st.image(over, caption=f"Analyzed {idx+1}")
 
-        api_key = st.secrets.get("GOOGLE_API_KEY")
-        if not api_key:
-            st.warning("⚠️ Please add your GOOGLE_API_KEY to server/.streamlit/secrets.toml to use the chat.")
-        else:
-            try:
-                from langchain_google_genai import ChatGoogleGenerativeAI
-                from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-                
-                if "chat_llm" not in st.session_state:
-                    # Switch from Gemini to Qwen (HuggingFace pipeline wrapper) for chatbot 
-                    from langchain_community.llms.huggingface_pipeline import HuggingFacePipeline
-                    from transformers import pipeline
-                    import torch
-                    
-                    try:
-                        # Load Qwen model via huggingface pipeline
-                        pipe = pipeline(
-                            "text-generation", 
-                            model="Qwen/Qwen1.5-0.5B-Chat", # Using 0.5B as default for chatbot responsiveness
-                            max_new_tokens=256,
-                            device=torch.device("cpu")
-                        )
-                        st.session_state.chat_llm = HuggingFacePipeline(pipeline=pipe)
-                        st.session_state.is_huggingface = True
-                    except Exception as e:
-                        st.error(f"Failed to load local Qwen model: {e}")
-                        st.stop()
-                
-                if "messages" not in st.session_state:
-                    st.session_state.messages = [
-                        SystemMessage(content="You are an expert Auto Insurance Claims Assistant. Your goal is to gather the user's name, insurance company, policy number, vehicle details, and details about the incident in a friendly, conversational manner. Ask for one or two pieces of information at a time so you don't overwhelm them. Please ask the user to upload images of the damage if they haven't already. Once you have all the information, summarize it strictly and concisely and ask if they are ready to proceed with generating the official claim draft. Be polite and professional."),
-                        AIMessage(content="Hello! I am your AI Claims Assistant. I'm here to help you file your auto insurance claim. To get started, could you please tell me your name and the name of your insurance provider, and upload some photos of the damage using the uploader above?")
-                    ]
-                    
-                # Display chat messages (excluding SystemMessage)
-                for msg in st.session_state.messages:
-                    if isinstance(msg, AIMessage):
-                        with st.chat_message("assistant", avatar="🤖"):
-                            st.markdown(msg.content)
-                    elif isinstance(msg, HumanMessage) and not msg.content.startswith("(System:"):
-                        with st.chat_message("user", avatar="👤"):
-                            st.markdown(msg.content)
-                            
-                # Unified audio/text handling
-                prompt = st.chat_input("Type your message here...")
-                # Removed generic st.audio_input as it does not inherently transcribe speech to text.
-                
-                if prompt:
-                    # Add user message
-                    st.session_state.messages.append(HumanMessage(content=prompt))
-                    with st.chat_message("user", avatar="👤"):
-                        st.markdown(prompt)
-                        
-                    # Generate response
-                    with st.chat_message("assistant", avatar="🤖"):
-                        with st.spinner("Thinking..."):
-                            # Since HF pipeline takes strings rather than Langchain Message objects directly
-                            if st.session_state.get("is_huggingface"):
-                                prompt_str = "\n".join([m.content for m in st.session_state.messages])
-                                response_text = st.session_state.chat_llm.invoke(prompt_str)
-                            else:
-                                response = st.session_state.chat_llm.invoke(st.session_state.messages)
-                                response_text = response.content
-                                
-                            st.markdown(response_text)
-                            st.session_state.messages.append(AIMessage(content=response_text))
-                            
-                if "messages" in st.session_state and len(st.session_state.messages) > 4:
-                    if st.button("📝 Generate Official Claim Draft with Qwen-VL (Free)"):
-                        with st.spinner("Drafting insurance claim using Qwen-VL..."):
-                            try:
-                                # Prepare gathered chat context as event description
-                                chat_context = "\n".join([m.content for m in st.session_state.messages if isinstance(m, HumanMessage) or isinstance(m, AIMessage)])
-                                drafter = ClaimDraftCore(provider="qwen-vl", model_name="Qwen/Qwen-VL-Chat") # Using Qwen-VL
-                                claim_draft = drafter.generate_draft(
-                                    detected_damage="Detected damage on uploaded images.",
-                                    event_description="Based on conversation:\n" + chat_context,
-                                    images=st.session_state.get("chat_raw_images", []),
-                                    masks=st.session_state.get("chat_masks", [])
-                                )
-                                st.markdown('<div class="claim-box">', unsafe_allow_html=True)
-                                st.markdown(claim_draft)
-                                st.markdown('</div>', unsafe_allow_html=True)
-                            except Exception as e:
-                                st.error(f"Error generating claim draft: {e}")
+        try:
+            from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
-            except ImportError:
-                st.error("Missing required LangChain or GenerativeAI packages. Please install them to use the chat.")
+            if "chat_llm" not in st.session_state or st.session_state.get("chat_llm_model") != local_qwen_model_name:
+                st.session_state.chat_llm = load_local_qwen_chat_client(local_qwen_model_name)
+                st.session_state.chat_llm_model = local_qwen_model_name
+
+            if "messages" not in st.session_state:
+                st.session_state.messages = [
+                    SystemMessage(content="You are an expert Auto Insurance Claims Assistant. Your goal is to gather the user's name, insurance company, policy number, vehicle details, and details about the incident in a friendly, conversational manner. Ask for one or two pieces of information at a time so you don't overwhelm them. Please ask the user to upload images of the damage if they haven't already. Once you have all the information, summarize it strictly and concisely and ask if they are ready to proceed with generating the official claim draft. Be polite and professional."),
+                    AIMessage(content="Hello! I am your AI Claims Assistant. I'm here to help you file your auto insurance claim. To get started, could you please tell me your name and the name of your insurance provider, and upload some photos of the damage using the uploader above?")
+                ]
+
+            for msg in st.session_state.messages:
+                if isinstance(msg, AIMessage):
+                    with st.chat_message("assistant", avatar="🤖"):
+                        st.markdown(msg.content)
+                elif isinstance(msg, HumanMessage) and not msg.content.startswith("(System:"):
+                    with st.chat_message("user", avatar="👤"):
+                        st.markdown(msg.content)
+
+            prompt = st.chat_input("Type your message here...")
+
+            if prompt:
+                st.session_state.messages.append(HumanMessage(content=prompt))
+                with st.chat_message("user", avatar="👤"):
+                    st.markdown(prompt)
+
+                with st.chat_message("assistant", avatar="🤖"):
+                    with st.spinner("Thinking..."):
+                        response_text = st.session_state.chat_llm.invoke(st.session_state.messages)
+                        st.markdown(response_text)
+                        st.session_state.messages.append(AIMessage(content=response_text))
+
+            if "messages" in st.session_state and len(st.session_state.messages) > 4:
+                if st.button("📝 Generate Official Claim Draft with Local Qwen"):
+                    with st.spinner(f"Drafting insurance claim using local Qwen-VL ({local_qwen_vl_model_name})..."):
+                        try:
+                            chat_context = "\n".join([m.content for m in st.session_state.messages if isinstance(m, HumanMessage) or isinstance(m, AIMessage)])
+                            claim_draft, draft_mode = generate_claim_with_fallback(
+                                local_qwen_vl_model_name=local_qwen_vl_model_name,
+                                local_qwen_model_name=local_qwen_model_name,
+                                detected_damage="Detected damage on uploaded images.",
+                                event_description="Based on conversation:\n" + chat_context,
+                                images=st.session_state.get("chat_raw_images", []),
+                                masks=st.session_state.get("chat_masks", [])
+                            )
+                            if draft_mode == "text":
+                                st.warning("Vision claim drafting is unavailable on the current machine, so the app fell back to text-only Qwen for this draft.")
+                            st.markdown('<div class="claim-box">', unsafe_allow_html=True)
+                            st.markdown(claim_draft)
+                            st.markdown('</div>', unsafe_allow_html=True)
+                        except Exception as e:
+                            st.error(f"Error generating claim draft: {e}")
+
+        except ImportError:
+            st.error("Missing required LangChain or Transformers packages. Please install them to use the chat.")
 
 if __name__ == "__main__":
     main()

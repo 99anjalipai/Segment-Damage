@@ -8,6 +8,8 @@ STANDARD AUTO INSURANCE POLICY - COVERAGE SUMMARY
 
 
 from generative_ai.core.llm_clients import get_llm_client
+from generative_ai.core.llm_clients import DEFAULT_LOCAL_QWEN_MODEL
+from generative_ai.core.llm_clients import DEFAULT_LOCAL_QWEN_VL_MODEL
 
 class ClaimDraftCore:
     def __init__(self, provider="gemini", api_key=None, model_name=None):
@@ -22,6 +24,10 @@ class ClaimDraftCore:
             return "models/gemini-2.5-flash"
         elif provider == "openai":
             return "gpt-3.5-turbo"
+        elif provider == "qwen":
+            return DEFAULT_LOCAL_QWEN_MODEL
+        elif provider == "qwen-vl":
+            return DEFAULT_LOCAL_QWEN_VL_MODEL
         # Add more defaults as needed
         return None
 

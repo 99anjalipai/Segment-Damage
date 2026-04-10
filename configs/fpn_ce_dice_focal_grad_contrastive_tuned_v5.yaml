@@ -39,11 +39,11 @@ training:
     focal_gamma: 2.0
     focal_alpha: 0.25
     weights:
-      ce: 1.0
-      dice: 4.0
+      ce: 1.2
+      dice: 4.5
       focal: 1.0
-      grad: 0.5
-      contrastive: 1.0
+      grad: 0.75
+      contrastive: 1.2
       cls: 0.2
       cls_contrastive: 1.0
     contrastive:

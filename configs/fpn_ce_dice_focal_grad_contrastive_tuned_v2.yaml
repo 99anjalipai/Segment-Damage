@@ -28,7 +28,7 @@ model:
     dropout: 0.1
 
 training:
-  epochs: 40  # Increased from 10
+  epochs: 12  # Increased from 10
   batch_size: 4
   lr: 0.0005  # Lowered for stability
   weight_decay: 0.0001
@@ -39,17 +39,17 @@ training:
     focal_gamma: 2.0
     focal_alpha: 0.25
     weights:
-      ce: 1.0
-      dice: 4.0  # Increased
-      focal: 1.0  # Lowered
-      grad: 0.5   # Increased
-      contrastive: 0.5  # Increased
+      ce: 0.8
+      dice: 5.0
+      focal: 1.0
+      grad: 1.5
+      contrastive: 0.5
       cls: 0.2
       cls_contrastive: 0.5
     contrastive:
       enabled: true
       foreground_class_index: 1
-      tiny_area_threshold_pixels: 5000  # Lowered for small damages
+      tiny_area_threshold_pixels: 2500  # Lowered for small damages
       temperature: 0.1
       max_tiny_samples: 1024
       max_other_samples: 4096
