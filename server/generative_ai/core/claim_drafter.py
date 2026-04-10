@@ -10,7 +10,7 @@ STANDARD AUTO INSURANCE POLICY - COVERAGE SUMMARY
 from generative_ai.core.llm_clients import get_llm_client
 
 class ClaimDraftCore:
-    def __init__(self, provider="gemini", api_key=None, model_name=None):
+    def __init__(self, provider="qwen-vl", api_key=None, model_name=None):
         self.provider = provider
         self.api_key = api_key
         self.model_name = model_name or self.default_model(provider)

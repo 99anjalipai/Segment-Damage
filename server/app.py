@@ -163,7 +163,7 @@ def main():
                                 "incident_date": str(incident_date),
                                 "incident_time": incident_time,
                                 "incident_location": incident_location,
-                                "event_description": event_description,
+                                #"event_description": event_description,
                             }
                             vehicle_info = {
                                 "vehicle_year": vehicle_year,
@@ -173,7 +173,7 @@ def main():
                                 "license_plate": license_plate,
                             }
                             try:
-                                drafter = ClaimDraftCore(provider="qwen-vl", model_name="Qwen/Qwen1.5-0.5B-Chat")
+                                drafter = ClaimDraftCore(provider="qwen-vl") #, model_name="Qwen/Qwen1.5-0.5B-Chat")
                                 claim_draft = drafter.generate_draft(
                                     detected_damage="Detected damage on multiple images.",
                                     event_description=event_description,
@@ -310,7 +310,7 @@ def main():
                             try:
                                 # Prepare gathered chat context as event description
                                 chat_context = "\n".join([m.content for m in st.session_state.messages if isinstance(m, HumanMessage) or isinstance(m, AIMessage)])
-                                drafter = ClaimDraftCore(provider="qwen-vl", model_name="Qwen/Qwen-VL-Chat") # Using Qwen-VL
+                                drafter = ClaimDraftCore(provider="qwen-vl") #, model_name="Qwen/Qwen-VL-Chat") # Using Qwen-VL
                                 claim_draft = drafter.generate_draft(
                                     detected_damage="Detected damage on uploaded images.",
                                     event_description="Based on conversation:\n" + chat_context,
