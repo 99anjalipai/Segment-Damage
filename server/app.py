@@ -5,6 +5,7 @@ from PIL import Image
 
 # Import separated services
 from services.segmentation import segment_damage, overlay_mask
+from services.damage_analyzer import generate_detected_damage
 from generative_ai.core.claim_drafter import ClaimDraftCore
 
 st.set_page_config(
@@ -163,7 +164,7 @@ def main():
                                 "incident_date": str(incident_date),
                                 "incident_time": incident_time,
                                 "incident_location": incident_location,
-                                "event_description": event_description,
+                                #"event_description": event_description,
                             }
                             vehicle_info = {
                                 "vehicle_year": vehicle_year,
@@ -173,11 +174,11 @@ def main():
                                 "license_plate": license_plate,
                             }
                             try:
-                                drafter = ClaimDraftCore(provider="qwen-vl", model_name="Qwen/Qwen1.5-0.5B-Chat")
+                                drafter = ClaimDraftCore(provider="qwen-vl") #, model_name="Qwen/Qwen1.5-0.5B-Chat")
                                 claim_draft = drafter.generate_draft(
-                                    detected_damage="Detected damage on multiple images.",
+                                    detected_damage=generate_detected_damage(masks),
                                     event_description=event_description,
-                                    images=images,
+                                    images=overlayed_images,
                                     masks=masks,
                                     user_info=user_info,
                                     insurance_info=insurance_info,
@@ -256,7 +257,7 @@ def main():
                         pipe = pipeline(
                             "text-generation", 
                             model="Qwen/Qwen1.5-0.5B-Chat", # Using 0.5B as default for chatbot responsiveness
-                            max_new_tokens=256,
+                            max_new_tokens=3000,
                             device=torch.device("cpu")
                         )
                         st.session_state.chat_llm = HuggingFacePipeline(pipeline=pipe)
@@ -310,9 +311,9 @@ def main():
                             try:
                                 # Prepare gathered chat context as event description
                                 chat_context = "\n".join([m.content for m in st.session_state.messages if isinstance(m, HumanMessage) or isinstance(m, AIMessage)])
-                                drafter = ClaimDraftCore(provider="qwen-vl", model_name="Qwen/Qwen-VL-Chat") # Using Qwen-VL
+                                drafter = ClaimDraftCore(provider="qwen-vl") #, model_name="Qwen/Qwen-VL-Chat") # Using Qwen-VL
                                 claim_draft = drafter.generate_draft(
-                                    detected_damage="Detected damage on uploaded images.",
+                                    detected_damage=generate_detected_damage(st.session_state.get("chat_masks", [])),
                                     event_description="Based on conversation:\n" + chat_context,
                                     images=st.session_state.get("chat_raw_images", []),
                                     masks=st.session_state.get("chat_masks", [])
