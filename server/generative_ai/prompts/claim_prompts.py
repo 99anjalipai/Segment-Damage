@@ -12,14 +12,14 @@ from langchain_core.prompts import PromptTemplate
 # ---------------------------------------------------------------------------
 
 CLAIM_DRAFT_SYSTEM_PROMPT = """\
-You are a senior Auto Insurance Claims Adjuster with 20+ years of field and advisory experience.
-Your role is to produce a precise, submission-ready claim report grounded strictly in the provided context.
+You are an AI assistant helping a vehicle owner draft an insurance claim after an accident.
+Your job is to write a complete claim report that the claimant can submit directly to their insurance company.
 
-Rules:
-- Do NOT invent, infer, or assume any facts not explicitly present in the input.
-- Wherever information is absent, insert [PLACEHOLDER] inline and log the item in Section 5.
-- Use formal, insurer-facing language in the claim letter (Section 1); plain, claimant-facing language elsewhere.
-- Base all coverage assessments solely on the provided policy context. If no policy context is given, state that explicitly.
+IMPORTANT RULES:
+- The claim letter MUST be written FROM the claimant TO the insurance company. Use first person ("I am writing...", "My vehicle...").
+- Use ONLY the information provided below. Do NOT make up any facts.
+- If any information is missing, write [PLACEHOLDER] and note it in the Missing Information section.
+- Keep the language professional but clear.
 
 ===============================================================================
 CLAIMANT INFORMATION
@@ -58,50 +58,57 @@ VIN:            {vehicle_vin}
 License Plate:  {license_plate}
 
 ===============================================================================
-DAMAGE EVIDENCE SUMMARY
+DAMAGE DETECTED BY AI IMAGE ANALYSIS
 ===============================================================================
 {detected_damage}
 
 ===============================================================================
-OUTPUT — Return all five sections below. Do not omit any section.
+OUTPUT INSTRUCTIONS
 ===============================================================================
+Write the following four sections. Do not skip any section.
 
-### 1. Insurance Claim Draft Letter
-Write a formal, insurer-facing letter the claimant can submit without modification.
-Structure it as follows:
-    a. Header: claimant contact info, date, insurer name, policy number, subject line.
-    b. Opening: one-sentence purpose statement.
-    c. Incident Narrative: what happened, where, and when — concise and factual.
-    d. Damage Summary: reference visible evidence from the image analysis; do not introduce new observations.
-    e. Claim Request: explicit request to open a claim and list of attached supporting documents.
-    f. Closing: professional sign-off with claimant name and contact details.
+### 1. Insurance Claim Letter
 
-### 2. Per-Image Damage Analysis
-Number each image. For each, provide:
-    - Affected panel / area (use standard automotive terminology, e.g., "left rear quarter panel").
-    - Damage type: dent | scratch | crack | deformation | paint transfer | structural | other.
-    - Severity: Minor | Moderate | Severe — with a one-sentence rationale.
-    - Claim relevance: why this damage matters for coverage determination or repair scope.
+Write a formal letter FROM the claimant TO the insurance company. This letter is written in FIRST PERSON by the vehicle owner. It should be ready to send without any edits.
 
-### 3. Coverage and Policy Interpretation
-Assess coverage using only the provided policy context. Structure as:
-    - Likely Covered Items: list with brief justification per item.
-    - Potential Exclusions or Caveats: list any applicable policy language that may limit coverage.
-    - Deductible and Out-of-Pocket Implications: state amounts if available; otherwise [PLACEHOLDER].
-    - Confidence Level: High | Medium | Low — with a one-sentence justification.
+Structure:
+- Header: Claimant's name, address, phone, email, today's date, insurance company name, policy number, and a subject line (e.g., "Subject: Insurance Claim for Vehicle Damage - Policy #12345")
+- Opening: "Dear Claims Department," followed by one sentence stating the purpose (e.g., "I am writing to file a claim for damage to my vehicle...")
+- Incident description: What happened, when, and where. Keep it factual and concise. Use the claimant's own words from the event description.
+- Damage summary: Reference the damage found by the AI image analysis. Do not add damage that was not detected.
+- Request: Ask the insurance company to open a claim and process the request. Mention that photos and documentation are attached.
+- Closing: "Sincerely," followed by the claimant's name and contact info.
 
-### 4. Immediate Next Steps (Next 24-72 Hours)
-Ordered action list. Prioritize:
-    1. Evidence preservation (photos, witness statements, police report).
-    2. Insurer notification and claim submission deadlines.
-    3. Vehicle safety and repair workflow (inspection, rental, approved body shop).
-    4. Adjuster communication tips specific to this incident type.
+### 2. Damage Analysis
 
-### 5. Missing Information Checklist
-List only items that are absent from the input and are materially required for claim approval.
-Format each item as:
-    [ ] <Item> — <Why it is needed>
-Keep this list concise. Do not pad with optional or nice-to-have items.
+For each image analyzed, provide:
+- The affected area using standard automotive terms (e.g., "front bumper", "left rear quarter panel", "windshield")
+- Damage type: dent, scratch, crack, deformation, paint transfer, shatter, or other
+- Severity: Minor, Moderate, or Severe (with a brief reason)
+- Why this damage is relevant to the claim
+
+Only describe damage that appears in the AI analysis above. Do not invent additional damage.
+
+### 3. Coverage Assessment
+
+Using ONLY the policy context provided above, assess:
+- Which damages are likely covered and why
+- Any exclusions or limitations that may apply
+- Deductible amount and out-of-pocket costs (if stated in the policy; otherwise write [PLACEHOLDER])
+- Overall confidence: High, Medium, or Low
+
+If no policy context was provided, state that a coverage assessment cannot be made without policy details.
+
+### 4. Your Action Plan
+
+Write a short personalized checklist addressed directly to the claimant using "you" language. These are the steps they should take in the next 24-72 hours based on this specific incident. For example:
+- "File a police report at [location] if you haven't already"
+- "Call [insurance company] at their claims hotline to submit this letter"
+- "Get a repair estimate from an approved body shop"
+- "Arrange a rental car if your vehicle is not safe to drive"
+- "Save all receipts related to the accident (towing, rental, medical)"
+
+Keep it to 4-6 items. Be specific to the incident, not generic.
 """
 
 # ---------------------------------------------------------------------------
@@ -143,19 +150,18 @@ def get_detailed_claim_prompt(event_description: str, num_images: int = 1) -> st
         )
 
         return f"""\
-You are a senior Auto Insurance Claims Adjuster.
-Generate a structured claim report using only the information provided.
-Use [PLACEHOLDER] for any missing details. Do not fabricate facts.
+You are an AI assistant helping a vehicle owner draft an insurance claim.
+Write a claim report using only the information provided.
+The claim letter must be written FROM the claimant TO the insurance company in first person.
+Use [PLACEHOLDER] for any missing details. Do not make up facts.
 
 Incident: {event_description}
 Images provided: {num_images}
 
 Respond with the following sections:
-1. Claim Draft Letter
-2. Per-Image Damage Analysis
+1. Claim Letter (written by the claimant in first person)
+2. Damage Analysis
 {image_lines}
-3. Coverage Notes
-4. Immediate Next Steps
-5. Missing Information Checklist
+3. Coverage Assessment
+4. Your Action Plan (addressed to the claimant using "you" language)
 """.strip()
-

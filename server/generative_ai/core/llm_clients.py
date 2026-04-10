@@ -282,7 +282,7 @@ class QwenVLLLMClient(BaseLLMClient):
         with torch.no_grad():
             generated_ids = self.model.generate(
                 **inputs,
-                max_new_tokens=1500,
+                max_new_tokens=3000,
                 do_sample=False,        # greedy for consistency
                 temperature=None,
                 repetition_penalty=1.1, # reduce repetition in long outputs
