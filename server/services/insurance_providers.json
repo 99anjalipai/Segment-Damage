@@ -1,0 +1,808 @@
+{
+    "version": "1.0.0",
+    "last_updated": "2026-04-10",
+    "providers": {
+        "state_farm": {
+            "display_name": "State Farm",
+            "claims_phone": "1-800-732-5246",
+            "claims_url": "https://www.statefarm.com/claims",
+            "plans": {
+                "basic": {
+                    "plan_name": "State Farm Basic Auto",
+                    "coverage": {
+                        "collision": {
+                            "included": true,
+                            "description": "Covers damage to your vehicle from a collision with another vehicle or object.",
+                            "limit": "Actual Cash Value (ACV) of the vehicle at the time of the loss.",
+                            "deductible": 1000
+                        },
+                        "comprehensive": {
+                            "included": true,
+                            "description": "Covers damage from non-collision events such as theft, vandalism, fire, natural disasters, falling objects, and animal strikes.",
+                            "limit": "Actual Cash Value (ACV) of the vehicle at the time of the loss.",
+                            "deductible": 1000
+                        },
+                        "liability": {
+                            "bodily_injury_per_person": 25000,
+                            "bodily_injury_per_accident": 50000,
+                            "property_damage": 25000
+                        },
+                        "rental_reimbursement": {
+                            "included": false,
+                            "daily_limit": 0,
+                            "max_days": 0
+                        },
+                        "roadside_assistance": {
+                            "included": false
+                        },
+                        "glass_coverage": {
+                            "included": false,
+                            "description": "Not included in Basic plan. Windshield and glass damage subject to comprehensive deductible."
+                        },
+                        "uninsured_motorist": {
+                            "included": true,
+                            "bodily_injury_per_person": 25000,
+                            "bodily_injury_per_accident": 50000
+                        }
+                    },
+                    "exclusions": [
+                        "Damage caused by intentional acts of the insured.",
+                        "Damage occurring while the vehicle is used for commercial rideshare or delivery services.",
+                        "Wear and tear, mechanical breakdown, or gradual deterioration.",
+                        "Damage to custom equipment or aftermarket modifications exceeding $1,000 in value.",
+                        "Damage occurring while the vehicle is operated by an unlicensed driver."
+                    ],
+                    "claim_conditions": [
+                        "Claims must be reported within 30 days of the incident.",
+                        "Insured must provide photographic evidence of damage.",
+                        "A police report is required for all collision claims exceeding $2,500 in estimated damage.",
+                        "Insured must cooperate with the claims investigation and provide access to the vehicle for inspection.",
+                        "Two repair estimates from licensed body shops are recommended but not required."
+                    ],
+                    "depreciation_method": "Actual Cash Value with standard depreciation schedule based on vehicle age and mileage.",
+                    "payment_terms": "Claim payments issued within 15 business days of claim approval, minus applicable deductible."
+                },
+                "standard": {
+                    "plan_name": "State Farm Standard Auto",
+                    "coverage": {
+                        "collision": {
+                            "included": true,
+                            "description": "Covers damage to your vehicle from a collision with another vehicle or object.",
+                            "limit": "Actual Cash Value (ACV) of the vehicle at the time of the loss.",
+                            "deductible": 500
+                        },
+                        "comprehensive": {
+                            "included": true,
+                            "description": "Covers damage from non-collision events such as theft, vandalism, fire, natural disasters, falling objects, and animal strikes.",
+                            "limit": "Actual Cash Value (ACV) of the vehicle at the time of the loss.",
+                            "deductible": 500
+                        },
+                        "liability": {
+                            "bodily_injury_per_person": 50000,
+                            "bodily_injury_per_accident": 100000,
+                            "property_damage": 50000
+                        },
+                        "rental_reimbursement": {
+                            "included": true,
+                            "daily_limit": 30,
+                            "max_days": 30,
+                            "description": "Covers rental car costs up to $30/day for up to 30 days while your vehicle is being repaired due to a covered claim."
+                        },
+                        "roadside_assistance": {
+                            "included": true,
+                            "towing_limit_miles": 25,
+                            "services": [
+                                "Towing",
+                                "Battery jump-start",
+                                "Flat tire change",
+                                "Lockout service",
+                                "Fuel delivery (up to 2 gallons)"
+                            ]
+                        },
+                        "glass_coverage": {
+                            "included": false,
+                            "description": "Windshield and glass damage subject to comprehensive deductible."
+                        },
+                        "uninsured_motorist": {
+                            "included": true,
+                            "bodily_injury_per_person": 50000,
+                            "bodily_injury_per_accident": 100000
+                        }
+                    },
+                    "exclusions": [
+                        "Damage caused by intentional acts of the insured.",
+                        "Damage occurring while the vehicle is used for commercial rideshare or delivery services.",
+                        "Wear and tear, mechanical breakdown, or gradual deterioration.",
+                        "Damage to custom equipment or aftermarket modifications exceeding $2,500 in value.",
+                        "Damage occurring while the vehicle is operated by an unlicensed driver."
+                    ],
+                    "claim_conditions": [
+                        "Claims must be reported within 60 days of the incident.",
+                        "Insured must provide photographic evidence of damage.",
+                        "A police report is required for all collision claims exceeding $5,000 in estimated damage.",
+                        "Insured must cooperate with the claims investigation and provide access to the vehicle for inspection."
+                    ],
+                    "depreciation_method": "Actual Cash Value with standard depreciation schedule based on vehicle age and mileage.",
+                    "payment_terms": "Claim payments issued within 10 business days of claim approval, minus applicable deductible."
+                },
+                "premium": {
+                    "plan_name": "State Farm Premium Auto",
+                    "coverage": {
+                        "collision": {
+                            "included": true,
+                            "description": "Covers damage to your vehicle from a collision with another vehicle or object. Includes diminished value coverage for vehicles less than 5 years old.",
+                            "limit": "Replacement cost for vehicles under 3 years old; Actual Cash Value (ACV) for older vehicles.",
+                            "deductible": 250
+                        },
+                        "comprehensive": {
+                            "included": true,
+                            "description": "Covers damage from non-collision events such as theft, vandalism, fire, natural disasters, falling objects, and animal strikes.",
+                            "limit": "Replacement cost for vehicles under 3 years old; Actual Cash Value (ACV) for older vehicles.",
+                            "deductible": 250
+                        },
+                        "liability": {
+                            "bodily_injury_per_person": 100000,
+                            "bodily_injury_per_accident": 300000,
+                            "property_damage": 100000
+                        },
+                        "rental_reimbursement": {
+                            "included": true,
+                            "daily_limit": 50,
+                            "max_days": 45,
+                            "description": "Covers rental car costs up to $50/day for up to 45 days while your vehicle is being repaired due to a covered claim."
+                        },
+                        "roadside_assistance": {
+                            "included": true,
+                            "towing_limit_miles": 100,
+                            "services": [
+                                "Towing",
+                                "Battery jump-start",
+                                "Flat tire change",
+                                "Lockout service",
+                                "Fuel delivery (up to 5 gallons)",
+                                "Trip interruption reimbursement up to $500"
+                            ]
+                        },
+                        "glass_coverage": {
+                            "included": true,
+                            "deductible": 0,
+                            "description": "Full glass coverage with $0 deductible for windshield repair or replacement."
+                        },
+                        "uninsured_motorist": {
+                            "included": true,
+                            "bodily_injury_per_person": 100000,
+                            "bodily_injury_per_accident": 300000
+                        }
+                    },
+                    "exclusions": [
+                        "Damage caused by intentional acts of the insured.",
+                        "Wear and tear, mechanical breakdown, or gradual deterioration.",
+                        "Damage to custom equipment or aftermarket modifications exceeding $5,000 in value unless separately scheduled."
+                    ],
+                    "claim_conditions": [
+                        "Claims must be reported within 90 days of the incident.",
+                        "Insured must provide photographic evidence of damage.",
+                        "Insured must cooperate with the claims investigation and provide access to the vehicle for inspection.",
+                        "Dedicated claims concierge assigned for premium policyholders."
+                    ],
+                    "depreciation_method": "Replacement cost for vehicles under 3 years; Agreed Value for classic/specialty vehicles if scheduled.",
+                    "payment_terms": "Expedited claim payments issued within 5 business days of claim approval, minus applicable deductible."
+                }
+            }
+        },
+        "geico": {
+            "display_name": "GEICO",
+            "claims_phone": "1-800-841-3000",
+            "claims_url": "https://www.geico.com/claims",
+            "plans": {
+                "basic": {
+                    "plan_name": "GEICO Basic Auto",
+                    "coverage": {
+                        "collision": {
+                            "included": true,
+                            "description": "Pays for damage to your car when it hits or is hit by another vehicle or object.",
+                            "limit": "Actual Cash Value (ACV).",
+                            "deductible": 1000
+                        },
+                        "comprehensive": {
+                            "included": true,
+                            "description": "Covers non-collision damage including theft, fire, weather events, animal collisions, and falling objects.",
+                            "limit": "Actual Cash Value (ACV).",
+                            "deductible": 1000
+                        },
+                        "liability": {
+                            "bodily_injury_per_person": 30000,
+                            "bodily_injury_per_accident": 60000,
+                            "property_damage": 25000
+                        },
+                        "rental_reimbursement": {
+                            "included": false,
+                            "daily_limit": 0,
+                            "max_days": 0
+                        },
+                        "roadside_assistance": {
+                            "included": false
+                        },
+                        "glass_coverage": {
+                            "included": false,
+                            "description": "Glass damage subject to comprehensive deductible."
+                        },
+                        "uninsured_motorist": {
+                            "included": true,
+                            "bodily_injury_per_person": 30000,
+                            "bodily_injury_per_accident": 60000
+                        }
+                    },
+                    "exclusions": [
+                        "Intentional damage by the policyholder or any household member.",
+                        "Commercial use of the vehicle including rideshare and delivery.",
+                        "Mechanical or electrical breakdown not caused by a covered event.",
+                        "Aftermarket parts and custom modifications.",
+                        "Racing, stunts, or off-road use not on public roads."
+                    ],
+                    "claim_conditions": [
+                        "Claims must be filed within 30 days of the incident date.",
+                        "Photos of all damage are required at the time of filing.",
+                        "Police report required for hit-and-run, theft, and vandalism claims.",
+                        "Vehicle must be available for inspection by a GEICO adjuster or approved appraiser."
+                    ],
+                    "depreciation_method": "Actual Cash Value based on comparable market vehicles.",
+                    "payment_terms": "Payment within 15 business days of approval, minus deductible."
+                },
+                "standard": {
+                    "plan_name": "GEICO Standard Auto",
+                    "coverage": {
+                        "collision": {
+                            "included": true,
+                            "description": "Pays for damage to your car when it hits or is hit by another vehicle or object.",
+                            "limit": "Actual Cash Value (ACV).",
+                            "deductible": 500
+                        },
+                        "comprehensive": {
+                            "included": true,
+                            "description": "Covers non-collision damage including theft, fire, weather events, animal collisions, and falling objects.",
+                            "limit": "Actual Cash Value (ACV).",
+                            "deductible": 500
+                        },
+                        "liability": {
+                            "bodily_injury_per_person": 50000,
+                            "bodily_injury_per_accident": 100000,
+                            "property_damage": 50000
+                        },
+                        "rental_reimbursement": {
+                            "included": true,
+                            "daily_limit": 40,
+                            "max_days": 30,
+                            "description": "Up to $40/day for a maximum of 30 days while your vehicle undergoes covered repairs."
+                        },
+                        "roadside_assistance": {
+                            "included": true,
+                            "towing_limit_miles": 30,
+                            "services": [
+                                "Towing",
+                                "Battery service",
+                                "Flat tire assistance",
+                                "Lockout service",
+                                "Fuel delivery"
+                            ]
+                        },
+                        "glass_coverage": {
+                            "included": false,
+                            "description": "Glass damage subject to comprehensive deductible."
+                        },
+                        "uninsured_motorist": {
+                            "included": true,
+                            "bodily_injury_per_person": 50000,
+                            "bodily_injury_per_accident": 100000
+                        }
+                    },
+                    "exclusions": [
+                        "Intentional damage by the policyholder or any household member.",
+                        "Commercial use of the vehicle including rideshare and delivery.",
+                        "Mechanical or electrical breakdown not caused by a covered event.",
+                        "Racing, stunts, or off-road use not on public roads."
+                    ],
+                    "claim_conditions": [
+                        "Claims must be filed within 60 days of the incident date.",
+                        "Photos of damage are required.",
+                        "Police report required for hit-and-run, theft, and vandalism claims.",
+                        "Vehicle must be available for inspection."
+                    ],
+                    "depreciation_method": "Actual Cash Value based on comparable market vehicles.",
+                    "payment_terms": "Payment within 10 business days of approval, minus deductible."
+                },
+                "premium": {
+                    "plan_name": "GEICO Platinum Auto",
+                    "coverage": {
+                        "collision": {
+                            "included": true,
+                            "description": "Pays for damage to your car when it hits or is hit by another vehicle or object. Includes new car replacement for vehicles less than 1 year old.",
+                            "limit": "New vehicle replacement for cars under 1 year; ACV for older vehicles.",
+                            "deductible": 250
+                        },
+                        "comprehensive": {
+                            "included": true,
+                            "description": "Covers non-collision damage including theft, fire, weather events, animal collisions, and falling objects.",
+                            "limit": "New vehicle replacement for cars under 1 year; ACV for older vehicles.",
+                            "deductible": 250
+                        },
+                        "liability": {
+                            "bodily_injury_per_person": 100000,
+                            "bodily_injury_per_accident": 300000,
+                            "property_damage": 100000
+                        },
+                        "rental_reimbursement": {
+                            "included": true,
+                            "daily_limit": 60,
+                            "max_days": 45,
+                            "description": "Up to $60/day for a maximum of 45 days while your vehicle undergoes covered repairs."
+                        },
+                        "roadside_assistance": {
+                            "included": true,
+                            "towing_limit_miles": 75,
+                            "services": [
+                                "Towing",
+                                "Battery service",
+                                "Flat tire assistance",
+                                "Lockout service",
+                                "Fuel delivery",
+                                "Trip interruption up to $300"
+                            ]
+                        },
+                        "glass_coverage": {
+                            "included": true,
+                            "deductible": 0,
+                            "description": "Full glass coverage with $0 deductible."
+                        },
+                        "uninsured_motorist": {
+                            "included": true,
+                            "bodily_injury_per_person": 100000,
+                            "bodily_injury_per_accident": 300000
+                        }
+                    },
+                    "exclusions": [
+                        "Intentional damage by the policyholder.",
+                        "Mechanical or electrical breakdown not caused by a covered event.",
+                        "Racing or competitive driving events."
+                    ],
+                    "claim_conditions": [
+                        "Claims must be filed within 90 days of the incident date.",
+                        "Photos of damage are required.",
+                        "Police report recommended but not required for claims under $10,000.",
+                        "Priority claims processing with dedicated adjuster."
+                    ],
+                    "depreciation_method": "New vehicle replacement (under 1 year, under 15,000 miles); ACV for all others.",
+                    "payment_terms": "Expedited payment within 5 business days of approval, minus deductible."
+                }
+            }
+        },
+        "progressive": {
+            "display_name": "Progressive",
+            "claims_phone": "1-800-776-4737",
+            "claims_url": "https://www.progressive.com/claims",
+            "plans": {
+                "basic": {
+                    "plan_name": "Progressive Essential Auto",
+                    "coverage": {
+                        "collision": {
+                            "included": true,
+                            "description": "Covers repair or replacement of your vehicle after a collision.",
+                            "limit": "Actual Cash Value (ACV).",
+                            "deductible": 750
+                        },
+                        "comprehensive": {
+                            "included": true,
+                            "description": "Covers non-collision events: theft, vandalism, weather, fire, animal strikes, glass breakage.",
+                            "limit": "Actual Cash Value (ACV).",
+                            "deductible": 750
+                        },
+                        "liability": {
+                            "bodily_injury_per_person": 25000,
+                            "bodily_injury_per_accident": 50000,
+                            "property_damage": 25000
+                        },
+                        "rental_reimbursement": {
+                            "included": false,
+                            "daily_limit": 0,
+                            "max_days": 0
+                        },
+                        "roadside_assistance": {
+                            "included": false
+                        },
+                        "glass_coverage": {
+                            "included": false,
+                            "description": "Glass claims subject to comprehensive deductible."
+                        },
+                        "uninsured_motorist": {
+                            "included": true,
+                            "bodily_injury_per_person": 25000,
+                            "bodily_injury_per_accident": 50000
+                        }
+                    },
+                    "exclusions": [
+                        "Intentional acts by any insured person.",
+                        "Vehicle used primarily for business, rideshare, or delivery purposes.",
+                        "Normal wear, rust, corrosion, or mechanical failure.",
+                        "Custom parts and equipment over $1,500.",
+                        "Damage from off-road or track use."
+                    ],
+                    "claim_conditions": [
+                        "File claims within 30 days of the loss.",
+                        "Provide photographic documentation of all damage.",
+                        "Police report required for claims involving injury or property damage over $2,000.",
+                        "Allow Progressive or an approved appraiser to inspect the vehicle."
+                    ],
+                    "depreciation_method": "ACV based on market comparables and condition assessment.",
+                    "payment_terms": "Claims paid within 14 business days of approval, minus deductible."
+                },
+                "standard": {
+                    "plan_name": "Progressive Plus Auto",
+                    "coverage": {
+                        "collision": {
+                            "included": true,
+                            "description": "Covers repair or replacement of your vehicle after a collision. Includes deductible savings bank ($50 credit per 6-month policy period without claims).",
+                            "limit": "Actual Cash Value (ACV).",
+                            "deductible": 500
+                        },
+                        "comprehensive": {
+                            "included": true,
+                            "description": "Covers non-collision events: theft, vandalism, weather, fire, animal strikes, glass breakage.",
+                            "limit": "Actual Cash Value (ACV).",
+                            "deductible": 500
+                        },
+                        "liability": {
+                            "bodily_injury_per_person": 50000,
+                            "bodily_injury_per_accident": 100000,
+                            "property_damage": 50000
+                        },
+                        "rental_reimbursement": {
+                            "included": true,
+                            "daily_limit": 35,
+                            "max_days": 30,
+                            "description": "Up to $35/day for up to 30 days during covered repairs."
+                        },
+                        "roadside_assistance": {
+                            "included": true,
+                            "towing_limit_miles": 25,
+                            "services": [
+                                "Towing",
+                                "Battery jump",
+                                "Flat tire",
+                                "Lockout",
+                                "Fuel delivery"
+                            ]
+                        },
+                        "glass_coverage": {
+                            "included": false,
+                            "description": "Glass claims subject to comprehensive deductible."
+                        },
+                        "uninsured_motorist": {
+                            "included": true,
+                            "bodily_injury_per_person": 50000,
+                            "bodily_injury_per_accident": 100000
+                        }
+                    },
+                    "exclusions": [
+                        "Intentional acts by any insured person.",
+                        "Vehicle used primarily for business, rideshare, or delivery purposes.",
+                        "Normal wear, rust, corrosion, or mechanical failure.",
+                        "Custom parts and equipment over $3,000."
+                    ],
+                    "claim_conditions": [
+                        "File claims within 60 days of the loss.",
+                        "Provide photographic documentation of damage.",
+                        "Police report required for claims involving injury.",
+                        "Allow Progressive or an approved appraiser to inspect the vehicle."
+                    ],
+                    "depreciation_method": "ACV based on market comparables and condition assessment.",
+                    "payment_terms": "Claims paid within 10 business days of approval, minus deductible."
+                },
+                "premium": {
+                    "plan_name": "Progressive Platinum Auto",
+                    "coverage": {
+                        "collision": {
+                            "included": true,
+                            "description": "Covers repair or replacement of your vehicle after a collision. Includes diminished value protection and accident forgiveness (first at-fault accident does not increase premiums).",
+                            "limit": "Better car replacement: if totaled, covers a vehicle one model year newer with 15,000 fewer miles.",
+                            "deductible": 250
+                        },
+                        "comprehensive": {
+                            "included": true,
+                            "description": "Covers non-collision events: theft, vandalism, weather, fire, animal strikes, glass breakage.",
+                            "limit": "Better car replacement if totaled.",
+                            "deductible": 250
+                        },
+                        "liability": {
+                            "bodily_injury_per_person": 100000,
+                            "bodily_injury_per_accident": 300000,
+                            "property_damage": 100000
+                        },
+                        "rental_reimbursement": {
+                            "included": true,
+                            "daily_limit": 50,
+                            "max_days": 45,
+                            "description": "Up to $50/day for up to 45 days during covered repairs."
+                        },
+                        "roadside_assistance": {
+                            "included": true,
+                            "towing_limit_miles": 100,
+                            "services": [
+                                "Towing",
+                                "Battery jump",
+                                "Flat tire",
+                                "Lockout",
+                                "Fuel delivery",
+                                "Trip interruption up to $500"
+                            ]
+                        },
+                        "glass_coverage": {
+                            "included": true,
+                            "deductible": 0,
+                            "description": "$0 deductible for windshield repair or replacement."
+                        },
+                        "uninsured_motorist": {
+                            "included": true,
+                            "bodily_injury_per_person": 100000,
+                            "bodily_injury_per_accident": 300000
+                        }
+                    },
+                    "exclusions": [
+                        "Intentional acts by any insured person.",
+                        "Normal wear, rust, corrosion, or mechanical failure."
+                    ],
+                    "claim_conditions": [
+                        "File claims within 90 days of the loss.",
+                        "Provide photographic documentation of damage.",
+                        "Concierge claims service with dedicated representative.",
+                        "Vehicle inspection by Progressive network or approved appraiser."
+                    ],
+                    "depreciation_method": "Better car replacement for total losses; ACV for partial losses.",
+                    "payment_terms": "Priority processing: claims paid within 5 business days of approval, minus deductible."
+                }
+            }
+        },
+        "allstate": {
+            "display_name": "Allstate",
+            "claims_phone": "1-800-255-7828",
+            "claims_url": "https://www.allstate.com/claims",
+            "plans": {
+                "basic": {
+                    "plan_name": "Allstate Value Plan",
+                    "coverage": {
+                        "collision": {
+                            "included": true,
+                            "description": "Covers your vehicle for damage resulting from a collision.",
+                            "limit": "Actual Cash Value (ACV).",
+                            "deductible": 1000
+                        },
+                        "comprehensive": {
+                            "included": true,
+                            "description": "Covers damage from theft, weather, fire, animals, vandalism, and falling objects.",
+                            "limit": "Actual Cash Value (ACV).",
+                            "deductible": 1000
+                        },
+                        "liability": {
+                            "bodily_injury_per_person": 25000,
+                            "bodily_injury_per_accident": 50000,
+                            "property_damage": 25000
+                        },
+                        "rental_reimbursement": {
+                            "included": false,
+                            "daily_limit": 0,
+                            "max_days": 0
+                        },
+                        "roadside_assistance": {
+                            "included": false
+                        },
+                        "glass_coverage": {
+                            "included": false,
+                            "description": "Subject to comprehensive deductible."
+                        },
+                        "uninsured_motorist": {
+                            "included": true,
+                            "bodily_injury_per_person": 25000,
+                            "bodily_injury_per_accident": 50000
+                        }
+                    },
+                    "exclusions": [
+                        "Intentional damage.",
+                        "Business or commercial vehicle use.",
+                        "Mechanical and electrical breakdown.",
+                        "Custom parts over $1,000.",
+                        "Racing or competitive events."
+                    ],
+                    "claim_conditions": [
+                        "Report within 30 days.",
+                        "Photos of damage required.",
+                        "Police report for accidents with injuries or over $2,500 in damage.",
+                        "Vehicle inspection required."
+                    ],
+                    "depreciation_method": "ACV with standard depreciation.",
+                    "payment_terms": "Payment within 15 business days of approval."
+                },
+                "standard": {
+                    "plan_name": "Allstate Standard Plan",
+                    "coverage": {
+                        "collision": {
+                            "included": true,
+                            "description": "Covers your vehicle for damage resulting from a collision. Includes Allstate Safe Driving Bonus (deductible reduced by $100 for each claim-free year, up to $500).",
+                            "limit": "Actual Cash Value (ACV).",
+                            "deductible": 500
+                        },
+                        "comprehensive": {
+                            "included": true,
+                            "description": "Covers damage from theft, weather, fire, animals, vandalism, and falling objects.",
+                            "limit": "Actual Cash Value (ACV).",
+                            "deductible": 500
+                        },
+                        "liability": {
+                            "bodily_injury_per_person": 50000,
+                            "bodily_injury_per_accident": 100000,
+                            "property_damage": 50000
+                        },
+                        "rental_reimbursement": {
+                            "included": true,
+                            "daily_limit": 30,
+                            "max_days": 30,
+                            "description": "Up to $30/day for 30 days during covered repairs."
+                        },
+                        "roadside_assistance": {
+                            "included": true,
+                            "towing_limit_miles": 25,
+                            "services": [
+                                "Towing",
+                                "Battery",
+                                "Flat tire",
+                                "Lockout",
+                                "Fuel delivery"
+                            ]
+                        },
+                        "glass_coverage": {
+                            "included": false,
+                            "description": "Subject to comprehensive deductible."
+                        },
+                        "uninsured_motorist": {
+                            "included": true,
+                            "bodily_injury_per_person": 50000,
+                            "bodily_injury_per_accident": 100000
+                        }
+                    },
+                    "exclusions": [
+                        "Intentional damage.",
+                        "Business or commercial vehicle use.",
+                        "Mechanical and electrical breakdown.",
+                        "Custom parts over $2,500."
+                    ],
+                    "claim_conditions": [
+                        "Report within 60 days.",
+                        "Photos of damage required.",
+                        "Police report for accidents with injuries.",
+                        "Vehicle inspection required."
+                    ],
+                    "depreciation_method": "ACV with standard depreciation.",
+                    "payment_terms": "Payment within 10 business days of approval."
+                },
+                "premium": {
+                    "plan_name": "Allstate Premier Plan",
+                    "coverage": {
+                        "collision": {
+                            "included": true,
+                            "description": "Covers your vehicle for damage resulting from a collision. Includes accident forgiveness and new car replacement for vehicles under 2 years old.",
+                            "limit": "New car replacement (under 2 years); ACV for older vehicles.",
+                            "deductible": 250
+                        },
+                        "comprehensive": {
+                            "included": true,
+                            "description": "Covers damage from theft, weather, fire, animals, vandalism, and falling objects.",
+                            "limit": "New car replacement (under 2 years); ACV for older vehicles.",
+                            "deductible": 250
+                        },
+                        "liability": {
+                            "bodily_injury_per_person": 100000,
+                            "bodily_injury_per_accident": 300000,
+                            "property_damage": 100000
+                        },
+                        "rental_reimbursement": {
+                            "included": true,
+                            "daily_limit": 50,
+                            "max_days": 45,
+                            "description": "Up to $50/day for 45 days during covered repairs."
+                        },
+                        "roadside_assistance": {
+                            "included": true,
+                            "towing_limit_miles": 100,
+                            "services": [
+                                "Towing",
+                                "Battery",
+                                "Flat tire",
+                                "Lockout",
+                                "Fuel delivery",
+                                "Trip interruption up to $500"
+                            ]
+                        },
+                        "glass_coverage": {
+                            "included": true,
+                            "deductible": 0,
+                            "description": "$0 deductible glass coverage."
+                        },
+                        "uninsured_motorist": {
+                            "included": true,
+                            "bodily_injury_per_person": 100000,
+                            "bodily_injury_per_accident": 300000
+                        }
+                    },
+                    "exclusions": [
+                        "Intentional damage.",
+                        "Mechanical and electrical breakdown."
+                    ],
+                    "claim_conditions": [
+                        "Report within 90 days.",
+                        "Photos recommended.",
+                        "Concierge claims handling with personal representative.",
+                        "Mobile inspection available at your location."
+                    ],
+                    "depreciation_method": "New car replacement (under 2 years, under 24,000 miles); ACV otherwise.",
+                    "payment_terms": "Express payment within 5 business days."
+                }
+            }
+        },
+        "custom": {
+            "display_name": "Other / Custom Policy",
+            "claims_phone": "",
+            "claims_url": "",
+            "plans": {
+                "default": {
+                    "plan_name": "Custom Policy",
+                    "coverage": {
+                        "collision": {
+                            "included": true,
+                            "description": "Standard collision coverage. Specific terms depend on your policy documents.",
+                            "limit": "As specified in your policy.",
+                            "deductible": 500
+                        },
+                        "comprehensive": {
+                            "included": true,
+                            "description": "Standard comprehensive coverage. Specific terms depend on your policy documents.",
+                            "limit": "As specified in your policy.",
+                            "deductible": 500
+                        },
+                        "liability": {
+                            "bodily_injury_per_person": 50000,
+                            "bodily_injury_per_accident": 100000,
+                            "property_damage": 50000
+                        },
+                        "rental_reimbursement": {
+                            "included": false,
+                            "daily_limit": 0,
+                            "max_days": 0,
+                            "description": "Check your policy for rental reimbursement terms."
+                        },
+                        "roadside_assistance": {
+                            "included": false
+                        },
+                        "glass_coverage": {
+                            "included": false,
+                            "description": "Check your policy for glass coverage terms."
+                        },
+                        "uninsured_motorist": {
+                            "included": true,
+                            "bodily_injury_per_person": 50000,
+                            "bodily_injury_per_accident": 100000
+                        }
+                    },
+                    "exclusions": [
+                        "Refer to your specific policy documents for exclusion details."
+                    ],
+                    "claim_conditions": [
+                        "Report the incident to your insurance company as soon as possible.",
+                        "Provide photographic evidence of damage.",
+                        "Obtain a police report if required by your policy.",
+                        "Make the vehicle available for inspection."
+                    ],
+                    "depreciation_method": "As specified in your policy.",
+                    "payment_terms": "As specified in your policy."
+                }
+            }
+        }
+    }
+}
