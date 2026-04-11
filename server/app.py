@@ -1,20 +1,24 @@
 import streamlit as st
 import numpy as np
-import time
 import os
+import time
 from PIL import Image
 from datetime import datetime
 
-# Import services
-from services.segmentation import segment_damage, overlay_mask
-from services.damage_analyzer import generate_detected_damage, analyze_masks
+# ─── Service Imports ─────────────────────────────────────────────
 from services.policy_engine import (
     get_provider_list, get_plan_list, resolve_policy,
-    generate_policy_context, format_coverage_summary, get_provider_contact,
+    format_coverage_summary, get_provider_contact,
 )
-from services.repair_estimator import get_estimate_summary_for_llm
 from services.pdf_generator import generate_claim_pdf, REPORTLAB_AVAILABLE
 from generative_ai.core.claim_drafter import ClaimDraftCore
+from generative_ai.core.claim_graph import (
+    build_claim_graph, invoke_claim_graph,
+    get_graph_mermaid, get_graph_image,
+)
+from generative_ai.core.tracing import (
+    get_tracing_callbacks, flush_traces, get_tracing_status,
+)
 
 # ─── Page Config ─────────────────────────────────────────────────
 st.set_page_config(
@@ -29,13 +33,8 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap');
 
-html, body, [class*="css"] {
-    font-family: 'DM Sans', sans-serif;
-}
-
-#MainMenu {visibility: hidden;}
-footer {visibility: hidden;}
-header {visibility: hidden;}
+html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; }
+#MainMenu, footer, header { visibility: hidden; }
 
 .stApp::before {
     content: '';
@@ -50,14 +49,10 @@ section[data-testid="stSidebar"] {
     background: #0F172A;
     border-right: 1px solid #1E293B;
 }
-section[data-testid="stSidebar"] * {
-    color: #CBD5E1 !important;
-}
+section[data-testid="stSidebar"] * { color: #CBD5E1 !important; }
 section[data-testid="stSidebar"] .stMarkdown h1,
 section[data-testid="stSidebar"] .stMarkdown h2,
-section[data-testid="stSidebar"] .stMarkdown h3 {
-    color: #F8FAFC !important;
-}
+section[data-testid="stSidebar"] .stMarkdown h3 { color: #F8FAFC !important; }
 
 .stButton > button {
     background: linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%);
@@ -78,102 +73,60 @@ section[data-testid="stSidebar"] .stMarkdown h3 {
 }
 
 .report-section {
-    background: #FAFBFC;
-    border: 1px solid #E2E8F0;
-    border-left: 4px solid #1E40AF;
-    border-radius: 0 12px 12px 0;
-    padding: 1.5rem;
-    margin-bottom: 1.2rem;
+    background: #FAFBFC; border: 1px solid #E2E8F0; border-left: 4px solid #1E40AF;
+    border-radius: 0 12px 12px 0; padding: 1.5rem; margin-bottom: 1.2rem;
 }
 .report-section-green {
-    background: #F0FDF4;
-    border: 1px solid #BBF7D0;
-    border-left: 4px solid #16A34A;
-    border-radius: 0 12px 12px 0;
-    padding: 1.5rem;
-    margin-bottom: 1.2rem;
+    background: #F0FDF4; border: 1px solid #BBF7D0; border-left: 4px solid #16A34A;
+    border-radius: 0 12px 12px 0; padding: 1.5rem; margin-bottom: 1.2rem;
 }
 .report-section-amber {
-    background: #FFFBEB;
-    border: 1px solid #FDE68A;
-    border-left: 4px solid #D97706;
-    border-radius: 0 12px 12px 0;
-    padding: 1.5rem;
-    margin-bottom: 1.2rem;
+    background: #FFFBEB; border: 1px solid #FDE68A; border-left: 4px solid #D97706;
+    border-radius: 0 12px 12px 0; padding: 1.5rem; margin-bottom: 1.2rem;
 }
 .report-section-purple {
-    background: #FAF5FF;
-    border: 1px solid #E9D5FF;
-    border-left: 4px solid #7C3AED;
-    border-radius: 0 12px 12px 0;
-    padding: 1.5rem;
-    margin-bottom: 1.2rem;
+    background: #FAF5FF; border: 1px solid #E9D5FF; border-left: 4px solid #7C3AED;
+    border-radius: 0 12px 12px 0; padding: 1.5rem; margin-bottom: 1.2rem;
 }
 
 .metric-card {
     background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
-    border-radius: 14px;
-    padding: 1.2rem 1.5rem;
-    text-align: center;
-    color: white;
+    border-radius: 14px; padding: 1.2rem 1.5rem; text-align: center; color: white;
 }
-.metric-card .metric-value {
-    font-size: 1.6rem;
-    font-weight: 700;
-    color: #60A5FA;
-    line-height: 1.2;
-}
-.metric-card .metric-label {
-    font-size: 0.75rem;
-    color: #94A3B8;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    margin-top: 0.3rem;
-}
+.metric-card .metric-value { font-size: 1.6rem; font-weight: 700; color: #60A5FA; line-height: 1.2; }
+.metric-card .metric-label { font-size: 0.75rem; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 0.3rem; }
 
 .status-badge {
-    display: inline-block;
-    padding: 0.25rem 0.75rem;
-    border-radius: 20px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.03em;
+    display: inline-block; padding: 0.25rem 0.75rem; border-radius: 20px;
+    font-size: 0.75rem; font-weight: 600; letter-spacing: 0.03em;
 }
 .badge-success { background: #DCFCE7; color: #166534; }
 .badge-info { background: #DBEAFE; color: #1E40AF; }
+.badge-trace { background: #FEF3C7; color: #92400E; }
 
 .step-indicator {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.6rem 0.8rem;
-    background: rgba(255,255,255,0.05);
-    border-radius: 8px;
-    margin-bottom: 0.4rem;
-    font-size: 0.8rem;
-    font-weight: 500;
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.6rem 0.8rem; background: rgba(255,255,255,0.05);
+    border-radius: 8px; margin-bottom: 0.4rem; font-size: 0.8rem; font-weight: 500;
 }
 .step-indicator .step-num {
-    background: #1E40AF;
-    color: white;
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.65rem;
-    font-weight: 700;
-    flex-shrink: 0;
+    background: #1E40AF; color: white; width: 22px; height: 22px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.65rem; font-weight: 700; flex-shrink: 0;
 }
+
+.timing-bar {
+    display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0;
+    font-size: 0.8rem; color: #64748B;
+}
+.timing-bar .timing-label { min-width: 160px; }
+.timing-bar .timing-value { font-weight: 600; color: #1E40AF; }
 
 .stDownloadButton > button {
     background: linear-gradient(135deg, #065F46 0%, #10B981 100%) !important;
     box-shadow: 0 2px 8px rgba(6,95,70,0.25);
 }
-.stDownloadButton > button:hover {
-    box-shadow: 0 4px 16px rgba(6,95,70,0.35);
-}
+.stDownloadButton > button:hover { box-shadow: 0 4px 16px rgba(6,95,70,0.35); }
 </style>
 """, unsafe_allow_html=True)
 
@@ -196,36 +149,93 @@ def render_metric(value, label):
 def render_step(num, text):
     st.markdown(f'<div class="step-indicator"><div class="step-num">{num}</div>{text}</div>', unsafe_allow_html=True)
 
+def render_timing(label, seconds):
+    st.markdown(f'<div class="timing-bar"><span class="timing-label">{label}</span><span class="timing-value">{seconds:.1f}s</span></div>', unsafe_allow_html=True)
+
 
 # ─── Main ────────────────────────────────────────────────────────
 
 def main():
-    # Sidebar
+    # ── Sidebar ──────────────────────────────────────────────────
     with st.sidebar:
         st.markdown("## ⚡ AutoClaim AI")
         st.caption("Intelligent damage assessment & claims automation")
         st.divider()
 
+        # Model selection
         st.markdown("#### AI model")
         models = get_segmentation_models()
         seg_model = st.selectbox("Segmentation model", models, index=0 if models else None, help="Trained CV model for damage detection")
 
         st.divider()
-        st.markdown("#### Pipeline")
-        render_step(1, "Upload damage photos")
-        render_step(2, "AI segments damage")
-        render_step(3, "Analyze & estimate cost")
-        render_step(4, "Generate claim report")
-        render_step(5, "Download PDF")
-        st.divider()
-        st.caption("UNet · YOLOv8 · Qwen2-VL · LangChain")
 
-    # Header
+        # Pipeline diagram
+        st.markdown("#### LangGraph pipeline")
+        render_step(1, "Upload damage photos")
+        render_step(2, "CV segmentation")
+        render_step(3, "Damage analysis + cost estimate")
+        render_step(4, "Policy resolution")
+        render_step(5, "LLM: Claim letter")
+        render_step(6, "LLM: Damage report")
+        render_step(7, "LLM: Coverage assessment")
+        render_step(8, "LLM: Action plan")
+        render_step(9, "PDF export")
+
+        st.divider()
+
+        # Tracing status
+        trace_status = get_tracing_status()
+        if trace_status["active_provider"]:
+            st.markdown("#### Observability")
+            provider = trace_status["active_provider"]
+            if provider == "LangFuse":
+                host = trace_status.get("langfuse_host", "")
+                st.success(f"LangFuse active")
+                st.caption(f"Host: {host}")
+            elif provider == "LangSmith":
+                project = trace_status.get("langsmith_project", "")
+                st.success(f"LangSmith active")
+                st.caption(f"Project: {project}")
+        else:
+            with st.expander("Enable tracing"):
+                st.caption(
+                    "Set environment variables to enable observability:\n\n"
+                    "**LangFuse (open source):**\n"
+                    "```\n"
+                    "LANGFUSE_PUBLIC_KEY=pk-lf-...\n"
+                    "LANGFUSE_SECRET_KEY=sk-lf-...\n"
+                    "LANGFUSE_HOST=https://cloud.langfuse.com\n"
+                    "```\n\n"
+                    "**LangSmith:**\n"
+                    "```\n"
+                    "LANGCHAIN_TRACING_V2=true\n"
+                    "LANGCHAIN_API_KEY=ls-...\n"
+                    "LANGCHAIN_PROJECT=autoclaim-ai\n"
+                    "```"
+                )
+
+        st.divider()
+
+        # Graph visualization
+        with st.expander("View graph structure"):
+            if "claim_graph" in st.session_state:
+                mermaid_str = get_graph_mermaid(st.session_state.claim_graph)
+                if mermaid_str:
+                    st.code(mermaid_str, language="mermaid")
+                else:
+                    st.caption("Graph visualization requires pygraphviz")
+            else:
+                st.caption("Graph will appear after first run")
+
+        st.divider()
+        st.caption("UNet · YOLOv8 · Qwen2-VL · LangGraph · LangFuse")
+
+    # ── Header ───────────────────────────────────────────────────
     st.markdown("# File your claim in minutes, not days.")
     st.markdown("Upload photos of your damaged vehicle. Our AI analyzes damage, cross-references your policy, estimates repairs, and drafts a submission-ready claim.")
     st.markdown("---")
 
-    # ── Form: Row 1 ──────────────────────────────────────────────
+    # ── Form: Row 1 - Claimant + Insurance ───────────────────────
     col_l, col_r = st.columns(2)
 
     with col_l:
@@ -256,12 +266,11 @@ def main():
         policy_number = st.text_input("Policy number", placeholder="POL-2026-XXXXXX")
 
         resolved = resolve_policy(sel_prov_id, sel_plan_id)
-        deductible = resolved.get("coverage", {}).get("collision", {}).get("deductible", 500) if resolved else 500
         if resolved:
             with st.expander("View your coverage summary"):
                 st.code(format_coverage_summary(resolved), language=None)
 
-    # ── Form: Row 2 ──────────────────────────────────────────────
+    # ── Form: Row 2 - Vehicle + Incident ─────────────────────────
     st.markdown("---")
     col_v, col_i = st.columns(2)
 
@@ -306,6 +315,8 @@ def main():
 
     if has_imgs and all_filled:
         images = [Image.open(f) for f in uploaded_files]
+
+        # Show uploaded photos
         img_cols = st.columns(min(len(images), 4))
         for idx, img in enumerate(images):
             with img_cols[idx % len(img_cols)]:
@@ -314,137 +325,132 @@ def main():
         st.markdown("")
         if st.button("⚡  Analyze damage & generate claim", use_container_width=True):
 
-            # Stage 1: Segmentation
-            from services import segmentation as seg
-            masks, overlayed_images = [], []
-            with st.spinner("Running AI damage detection..."):
-                prog = st.progress(0)
-                for idx, img in enumerate(images):
-                    mask = seg.segment_damage(np.array(img), model_name=seg_model)
-                    ov = seg.overlay_mask(img, mask, color=(255, 50, 50), alpha=0.6)
-                    masks.append(mask)
-                    overlayed_images.append(ov)
-                    prog.progress((idx + 1) / len(images))
-                prog.empty()
+            # ── Build Graph (once) ───────────────────────────────
+            if "claim_graph" not in st.session_state:
+                with st.spinner("Loading AI models..."):
+                    drafter = ClaimDraftCore(provider="qwen-vl")
+                    st.session_state.claim_graph = build_claim_graph(drafter.llm)
 
-            st.markdown("##### Detection results")
-            det_cols = st.columns(min(len(images), 4))
-            for idx in range(len(images)):
-                with det_cols[idx % len(det_cols)]:
-                    st.image(overlayed_images[idx], use_container_width=True, caption=f"Detection {idx+1}")
+            graph = st.session_state.claim_graph
 
-            # Stage 2: Analysis
-            damage_text = generate_detected_damage(masks)
-            damage_analyses = analyze_masks(masks)
-            policy_context = generate_policy_context(sel_prov_id, sel_plan_id)
-            policy_summary = format_coverage_summary(resolved) if resolved else ""
-            provider_contact = get_provider_contact(sel_prov_id)
-            repair_text, repair_result = get_estimate_summary_for_llm(damage_analyses, deductible=deductible)
+            # ── Prepare Inputs ───────────────────────────────────
+            claimant_info = {
+                "user_name": user_name,
+                "user_address": user_address,
+                "user_phone": user_phone,
+                "user_email": user_email,
+            }
+            vehicle_info_d = {
+                "vehicle_year": vehicle_year,
+                "vehicle_make": vehicle_make,
+                "vehicle_model": vehicle_model,
+                "vehicle_vin": vehicle_vin,
+                "license_plate": license_plate,
+            }
+            incident_info_d = {
+                "incident_date": str(incident_date),
+                "incident_time": incident_time,
+                "incident_location": incident_location,
+                "event_description": event_description,
+            }
+            insurance_info_d = {
+                "insurance_company": insurance_company,
+                "policy_number": policy_number,
+            }
 
-            # Metrics
+            # ── Tracing ─────────────────────────────────────────
+            trace_callbacks = get_tracing_callbacks(
+                session_id=f"claim-{policy_number}-{datetime.now().strftime('%H%M%S')}",
+                user_id=user_name,
+                trace_name="autoclaim-pipeline",
+                metadata={
+                    "provider": insurance_company,
+                    "plan": sel_plan_id,
+                    "vehicle": f"{vehicle_year} {vehicle_make} {vehicle_model}",
+                    "num_images": len(images),
+                },
+            )
+
+            # ── Invoke Graph ─────────────────────────────────────
+            total_start = time.time()
+
+            with st.status("Running AutoClaim AI pipeline...", expanded=True) as pipeline_status:
+                st.write("Segmenting damage from photos...")
+                st.write("This may take a few minutes on CPU.")
+
+                result = invoke_claim_graph(
+                    graph=graph,
+                    images=images,
+                    seg_model_name=seg_model,
+                    user_info=claimant_info,
+                    vehicle_info=vehicle_info_d,
+                    incident_info=incident_info_d,
+                    insurance_info=insurance_info_d,
+                    provider_id=sel_prov_id,
+                    plan_id=sel_plan_id,
+                    callbacks=trace_callbacks,
+                )
+
+                pipeline_status.update(label="Pipeline complete", state="complete")
+
+            # Flush traces
+            flush_traces()
+
+            total_elapsed = time.time() - total_start
+
+            # ── Extract Results ───────────────────────────────────
+            section1 = result.get("section_claim_letter", "[Not generated]")
+            section2 = result.get("section_damage_report", "[Not generated]")
+            section3 = result.get("section_coverage", "[Not generated]")
+            section4 = result.get("section_action_plan", "[Not generated]")
+            repair_result = result.get("repair_result", {"num_regions": 0, "total_midpoint": 0, "total_low": 0, "total_high": 0})
+            repair_text = result.get("repair_text", "")
+            overlayed_images = result.get("overlayed_images", [])
+            policy_summary = result.get("policy_summary", "")
+            deductible = result.get("deductible", 500)
+            provider_contact = result.get("provider_contact", {})
+            timings = result.get("timings", {})
+            errors = result.get("errors", [])
+
+            # ── Detection Results ─────────────────────────────────
+            if overlayed_images:
+                st.markdown("##### Detection results")
+                det_cols = st.columns(min(len(overlayed_images), 4))
+                for idx in range(len(overlayed_images)):
+                    with det_cols[idx % len(det_cols)]:
+                        st.image(overlayed_images[idx], use_container_width=True, caption=f"Detection {idx+1}")
+
+            # ── Metrics Dashboard ─────────────────────────────────
             st.markdown("---")
-            m1, m2, m3, m4 = st.columns(4)
-            with m1: render_metric(str(len(images)), "Images analyzed")
-            with m2: render_metric(str(repair_result["num_regions"]), "Damage regions")
-            with m3: render_metric(f"${repair_result['total_midpoint']:,}", "Est. repair cost")
-            with m4: render_metric(f"${min(deductible, repair_result['total_midpoint']):,}", f"Deductible (${deductible})")
+            m1, m2, m3, m4, m5 = st.columns(5)
+            with m1: render_metric(str(len(images)), "Images")
+            with m2: render_metric(str(repair_result.get("num_regions", 0)), "Damage regions")
+            with m3: render_metric(f"${repair_result.get('total_midpoint', 0):,}", "Est. repair")
+            with m4: render_metric(f"${min(deductible, repair_result.get('total_midpoint', 0)):,}", "Deductible")
+            with m5: render_metric(f"{total_elapsed:.0f}s", "Pipeline time")
 
-            # Stage 3: LLM Generation
-            st.markdown("---")
-            st.markdown("##### Generating claim report...")
+            # ── Pipeline Timings ──────────────────────────────────
+            with st.expander("Pipeline performance"):
+                for node_name, elapsed in sorted(timings.items(), key=lambda x: x[1], reverse=True):
+                    render_timing(node_name, elapsed)
+                st.markdown(f"**Total: {total_elapsed:.1f}s**")
 
-            if "drafter" not in st.session_state:
-                st.session_state.drafter = ClaimDraftCore(provider="qwen-vl")
-            llm = st.session_state.drafter.llm
-            overlayed_pil = [Image.fromarray(ov) for ov in overlayed_images]
+                # Tracing link
+                trace_status = get_tracing_status()
+                if trace_status["active_provider"] == "LangFuse":
+                    st.markdown(f'<span class="status-badge badge-trace">Traced to LangFuse</span>', unsafe_allow_html=True)
+                    st.caption(f"View traces at: {trace_status.get('langfuse_host', '')}")
+                elif trace_status["active_provider"] == "LangSmith":
+                    st.markdown(f'<span class="status-badge badge-trace">Traced to LangSmith</span>', unsafe_allow_html=True)
+                    st.caption(f"Project: {trace_status.get('langsmith_project', '')}")
 
-            claimant_info = {"user_name": user_name, "user_address": user_address, "user_phone": user_phone, "user_email": user_email}
-            vehicle_info_d = {"vehicle_year": vehicle_year, "vehicle_make": vehicle_make, "vehicle_model": vehicle_model, "vehicle_vin": vehicle_vin, "license_plate": license_plate}
-            incident_info_d = {"incident_date": str(incident_date), "incident_time": incident_time, "incident_location": incident_location, "event_description": event_description}
-            insurance_info_d = {"insurance_company": insurance_company, "policy_number": policy_number}
+            # Show errors if any
+            if errors:
+                with st.expander("Errors", expanded=True):
+                    for err in errors:
+                        st.error(err)
 
-            # Prompt 1
-            with st.status("Writing claim letter...", expanded=False) as s:
-                p1 = f"""Write a formal insurance claim letter written by {user_name} to {insurance_company}.
-
-RULES: First person as {user_name}. No technical data (bounding boxes, percentages). No invented facts. You are the claimant, not the insurer.
-
-CLAIMANT: {user_name}, {user_address}, Phone: {user_phone}, Email: {user_email}
-INSURANCE: {insurance_company}, Policy: {policy_number}
-VEHICLE: {vehicle_year} {vehicle_make} {vehicle_model}, VIN: {vehicle_vin}, Plate: {license_plate}
-INCIDENT: {incident_date} at {incident_time}, {incident_location}
-WHAT HAPPENED: {event_description}
-DAMAGE (AI): {damage_text}
-
-FORMAT:
-{user_name}
-{user_address}
-Phone: {user_phone} | Email: {user_email}
-Date: {incident_date}
-
-{insurance_company} - Claims Department
-Policy: {policy_number}
-Subject: Insurance Claim for Vehicle Damage
-
-Dear Claims Department,
-[File a claim. Describe incident. Summarize damage in plain English. Mention attached photos. Request claim be opened.]
-
-Sincerely,
-{user_name}
-{user_phone} | {user_email}"""
-                section1 = llm.generate_raw(p1, images=overlayed_pil, max_tokens=1000)
-                s.update(label="Claim letter ready", state="complete")
-
-            # Prompt 2
-            with st.status("Analyzing damage...", expanded=False) as s:
-                p2 = f"""Automotive damage assessor. Attached images show damage in red.
-
-AI DATA: {damage_text}
-REPAIR ESTIMATE: {repair_text}
-
-Write a report for ALL {repair_result['num_regions']} damage regions. For each:
-1. Affected area (automotive terms)
-2. Damage type: dent/scratch/crack/deformation/shatter/structural
-3. Severity with explanation
-4. Estimated repair cost range
-5. Claim relevance
-
-Cover ALL regions. Do NOT stop after one."""
-                section2 = llm.generate_raw(p2, images=overlayed_pil, max_tokens=1000)
-                s.update(label="Damage analysis ready", state="complete")
-
-            # Prompt 3
-            with st.status("Assessing coverage...", expanded=False) as s:
-                p3 = f"""Insurance policy analyst. Read the policy CAREFULLY.
-
-POLICY: {policy_context}
-DAMAGES: {damage_text}
-REPAIR ESTIMATE: ${repair_result['total_low']:,} - ${repair_result['total_high']:,}
-
-Answer using ONLY the policy:
-1. COVERED ITEMS: Which damages are covered? Reference policy language.
-2. EXCLUSIONS: Only those explicitly stated. If none apply, say so.
-3. DEDUCTIBLE: Quote exact amount. Calculate insurer pays = estimate - deductible.
-4. RENTAL COVERAGE: Included? Daily/duration limits?
-5. CLAIM FILING: Deadlines and requirements?
-6. CONFIDENCE: High/Medium/Low with justification.
-
-Do NOT invent policy terms."""
-                section3 = llm.generate_raw(p3, max_tokens=700)
-                s.update(label="Coverage assessment ready", state="complete")
-
-            # Prompt 4
-            with st.status("Creating action plan...", expanded=False) as s:
-                claims_phone = provider_contact.get("claims_phone", "")
-                p4 = f"""5 action items for {user_name} after their accident.
-
-Context: Accident {incident_date} at {incident_location}. Insurer: {insurance_company} (#{policy_number}). Claims phone: {claims_phone}. Vehicle: {vehicle_year} {vehicle_make} {vehicle_model}. Repair estimate: ${repair_result['total_midpoint']:,}. Deductible: ${deductible}.
-
-Numbered list only. No greeting/sign-off. "You" language. Mention {insurance_company} by name."""
-                section4 = llm.generate_raw(p4, max_tokens=400)
-                s.update(label="Action plan ready", state="complete")
-
-            # ── Report Display ───────────────────────────────────
+            # ── Report ────────────────────────────────────────────
             st.markdown("---")
             st.markdown("## Your claim report")
             plan_label = plan_names[sel_plan_idx] if plans else "Custom"
@@ -455,11 +461,13 @@ Numbered list only. No greeting/sign-off. "You" language. Mention {insurance_com
             )
             st.markdown("")
 
+            # Section 1: Claim Letter
             st.markdown('<div class="report-section">', unsafe_allow_html=True)
             st.markdown("#### 📄 Claim letter")
             st.markdown(section1)
             st.markdown('</div>', unsafe_allow_html=True)
 
+            # Section 2: Damage Analysis
             st.markdown('<div class="report-section-amber">', unsafe_allow_html=True)
             st.markdown("#### 🔍 Damage analysis")
             st.markdown(section2)
@@ -467,25 +475,33 @@ Numbered list only. No greeting/sign-off. "You" language. Mention {insurance_com
                 st.code(repair_text, language=None)
             st.markdown('</div>', unsafe_allow_html=True)
 
+            # Section 3: Coverage Assessment
             st.markdown('<div class="report-section-purple">', unsafe_allow_html=True)
             st.markdown("#### 📋 Coverage assessment")
             st.markdown(section3)
             st.markdown('</div>', unsafe_allow_html=True)
 
+            # Section 4: Action Plan
             st.markdown('<div class="report-section-green">', unsafe_allow_html=True)
             st.markdown("#### ✅ Your action plan")
             st.markdown(section4)
+            claims_phone = provider_contact.get("claims_phone", "")
             if claims_phone:
                 st.info(f"**{insurance_company} claims hotline:** {claims_phone}")
             st.markdown('</div>', unsafe_allow_html=True)
 
-            # ── PDF / Downloads ──────────────────────────────────
+            # ── PDF & Downloads ───────────────────────────────────
             st.markdown("---")
             if REPORTLAB_AVAILABLE:
                 with st.spinner("Generating PDF..."):
                     try:
                         pdf_path = generate_claim_pdf(
-                            sections={"claim_letter": section1, "damage_analysis": section2, "coverage_assessment": section3, "action_plan": section4},
+                            sections={
+                                "claim_letter": section1,
+                                "damage_analysis": section2,
+                                "coverage_assessment": section3,
+                                "action_plan": section4,
+                            },
                             claimant_info=claimant_info,
                             vehicle_info=vehicle_info_d,
                             incident_info=incident_info_d,
@@ -497,17 +513,35 @@ Numbered list only. No greeting/sign-off. "You" language. Mention {insurance_com
                         )
                         with open(pdf_path, "rb") as f:
                             pdf_bytes = f.read()
+
                         d1, d2, _ = st.columns([1, 1, 2])
                         with d1:
-                            st.download_button("⬇  Download full report (PDF)", pdf_bytes, f"autoclaim_{user_name.replace(' ','_')}_{datetime.now().strftime('%Y%m%d')}.pdf", "application/pdf", use_container_width=True)
+                            st.download_button(
+                                "⬇  Download full report (PDF)",
+                                pdf_bytes,
+                                f"autoclaim_{user_name.replace(' ','_')}_{datetime.now().strftime('%Y%m%d')}.pdf",
+                                "application/pdf",
+                                use_container_width=True,
+                            )
                         with d2:
-                            st.download_button("📄  Download letter only", section1, f"claim_letter_{datetime.now().strftime('%Y%m%d')}.txt", "text/plain", use_container_width=True)
+                            st.download_button(
+                                "📄  Download letter only",
+                                section1,
+                                f"claim_letter_{datetime.now().strftime('%Y%m%d')}.txt",
+                                "text/plain",
+                                use_container_width=True,
+                            )
                     except Exception as e:
                         st.error(f"PDF generation failed: {e}")
+                        st.download_button("📄  Download letter (text)", section1, "claim_letter.txt", "text/plain")
             else:
                 st.info("Install `reportlab` for PDF export: `pip install reportlab`")
+                st.download_button("📄  Download letter (text)", section1, "claim_letter.txt", "text/plain")
 
-            st.caption("**Disclaimer:** AI-generated draft. Review before submission. Estimates are approximate. Consult a licensed adjuster for final evaluation.")
+            st.caption(
+                "**Disclaimer:** AI-generated draft. Review before submission. "
+                "Estimates are approximate. Consult a licensed adjuster for final evaluation."
+            )
 
 
 if __name__ == "__main__":

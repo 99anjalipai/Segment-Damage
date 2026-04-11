@@ -17,7 +17,17 @@ from models import DamageSegmentor
 
 # Global model variables
 _model = None
-_device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+
+
+def _resolve_device() -> torch.device:
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        return torch.device("mps")
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    return torch.device("cpu")
+
+
+_device = _resolve_device()
 
 
 def _load_model(model_name="fpn_ce_dice_focal_grad_contrastive_tuned_v2"):
