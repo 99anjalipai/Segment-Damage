@@ -34,7 +34,6 @@ class Mask2FormerBackbone(nn.Module):
         self.num_classes = int(num_classes)
         self.pretrained_model_name = str(pretrained_model_name)
 
-        # Match downstream dataset class count; HF uses `num_labels` for semantic classes.
         config = AutoConfig.from_pretrained(self.pretrained_model_name)
         config.num_labels = self.num_classes
 
@@ -55,7 +54,7 @@ class Mask2FormerBackbone(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            x: Normalized float tensor [B, 3, H, W] (no PIL; caller handles normalization).
+            x: Normalized float tensor [B, 3, H, W].
 
         Returns:
             Semantic segmentation logits [B, num_classes, H, W].
@@ -66,24 +65,28 @@ class Mask2FormerBackbone(nn.Module):
         b, _, h, w = x.shape
 
         outputs = self.model(pixel_values=x, return_dict=True)
+
+        if outputs.class_queries_logits is None or outputs.masks_queries_logits is None:
+            raise ValueError("Mask2Former output is missing class_queries_logits or masks_queries_logits")
+
         class_queries_logits = outputs.class_queries_logits
         masks_queries_logits = outputs.masks_queries_logits
 
-        # class_queries_logits: [B, Q, num_labels + 1] (last dim is "no-object")
+        # class_queries_logits: [B, Q, num_labels + 1] where last channel is "no object"
         # masks_queries_logits: [B, Q, Hm, Wm]
-        class_probs = F.softmax(class_queries_logits, dim=-1)[..., :-1]
-        mask_probs = masks_queries_logits.sigmoid()
+        class_logits = class_queries_logits[..., :-1]
 
-        # Dense semantic logits: sum_q P(class|q) * sigmoid(mask_q)
-        sem_logits = torch.einsum("bqc,bqhw->bchw", class_probs, mask_probs)
+        # Dense semantic logits from query-class logits and query-mask logits
+        sem_logits = torch.einsum("bqc,bqhw->bchw", class_logits, masks_queries_logits)
 
-        # Align channel dim with num_classes (handles head resize / padding edge cases).
         c_out = sem_logits.shape[1]
         if c_out != self.num_classes:
             if c_out > self.num_classes:
                 sem_logits = sem_logits[:, : self.num_classes]
             else:
-                padded = sem_logits.new_zeros((b, self.num_classes, sem_logits.shape[-2], sem_logits.shape[-1]))
+                padded = sem_logits.new_zeros(
+                    (b, self.num_classes, sem_logits.shape[-2], sem_logits.shape[-1])
+                )
                 padded[:, :c_out] = sem_logits
                 sem_logits = padded
 

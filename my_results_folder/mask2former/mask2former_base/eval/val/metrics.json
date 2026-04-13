@@ -1,0 +1,25 @@
+{
+  "mIoU": 0.8501288933841524,
+  "IoU_per_class": [
+    0.9294828735442701,
+    0.7707749132240349
+  ],
+  "F1_proxy": 0.918994234860193,
+  "DET_l": 0.8333333333333334,
+  "tiny_true_positive": 5,
+  "tiny_false_negative": 1,
+  "cls_accuracy": 0.0,
+  "cls_micro_f1": 0.0,
+  "cls_macro_f1": 0.0,
+  "cls_per_class_precision": [],
+  "cls_per_class_recall": [],
+  "cls_per_class_f1": [],
+  "cls_per_class_ap": [],
+  "cls_mAP": 0.0,
+  "cls_embedding_dim": 0,
+  "cls_centroid_counts": [],
+  "cls_centroid_cosine_similarity": [],
+  "cls_centroid_cosine_distance": [],
+  "cls_inter_class_centroid_distance_mean": 0.0,
+  "cls_per_class_intra_distance": []
+}
