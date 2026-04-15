@@ -133,15 +133,24 @@ section[data-testid="stSidebar"] .stMarkdown h3 { color: #F8FAFC !important; }
 
 # ─── Helpers ─────────────────────────────────────────────────────
 
+# def get_segmentation_models():
+#     outputs_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "outputs")
+#     models = []
+#     if os.path.exists(outputs_dir):
+#         for folder in sorted(os.listdir(outputs_dir)):
+#             fp = os.path.join(outputs_dir, folder)
+#             if os.path.isdir(fp) and os.path.exists(os.path.join(fp, "best.pt")):
+#                 models.append(folder)
+#     return models
+
 def get_segmentation_models():
-    outputs_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "outputs")
-    models = []
-    if os.path.exists(outputs_dir):
-        for folder in sorted(os.listdir(outputs_dir)):
-            fp = os.path.join(outputs_dir, folder)
-            if os.path.isdir(fp) and os.path.exists(os.path.join(fp, "best.pt")):
-                models.append(folder)
-    return models
+    return [
+        "feature_projector_ce_dice_focal_grad",
+        "fpn_ce_dice_focal_grad_contrastive_tuned",
+        "fpn_ce_dice_focal_grad_contrastive_tuned_v2",
+        "fpn_ce_dice_focal_grad_contrastive_tuned_v3",
+        "yolov8_seg",
+    ]
 
 def render_metric(value, label):
     st.markdown(f'<div class="metric-card"><div class="metric-value">{value}</div><div class="metric-label">{label}</div></div>', unsafe_allow_html=True)

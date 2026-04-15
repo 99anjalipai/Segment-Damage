@@ -6,6 +6,7 @@ from PIL import Image
 import torch
 import yaml
 from torchvision.transforms import functional as TF
+from ultralytics import YOLO
 from torchvision.transforms import InterpolationMode
 
 # Add the repository root to sys.path to allow importing from `models`
@@ -16,7 +17,8 @@ if str(ROOT) not in sys.path:
 from models import DamageSegmentor
 
 # Global model variables
-_model = None
+_unet_model = None
+_yolo_model = None
 
 
 def _resolve_device() -> torch.device:
@@ -30,15 +32,22 @@ def _resolve_device() -> torch.device:
 _device = _resolve_device()
 
 
-def _load_model(model_name="fpn_ce_dice_focal_grad_contrastive_tuned_v2"):
+def _load_unet_model(model_name="fpn_ce_dice_focal_grad_contrastive_tuned_v2"):
     """
     Loads the segmentation model and weights for the given model_name (folder in outputs/ and yaml in configs/).
     """
+    global _unet_model
+
+    if _unet_model is not None:
+        return _unet_model
+
     config_path = ROOT / "configs" / f"{model_name}.yaml"
     with open(config_path, "r") as f:
         cfg = yaml.safe_load(f)
+
     model_cfg = cfg["model"]
     loss_cfg = cfg.get("training", {}).get("loss", {})
+
     model = DamageSegmentor(
         num_classes=model_cfg["num_classes"],
         in_channels=model_cfg.get("in_channels", 3),
@@ -47,25 +56,45 @@ def _load_model(model_name="fpn_ce_dice_focal_grad_contrastive_tuned_v2"):
         dent_classification_config=model_cfg.get("dent_classification", {}),
         loss_config=loss_cfg,
     )
+
     weights_path = ROOT / "outputs" / model_name / "best.pt"
     ckpt = torch.load(weights_path, map_location=_device)
-    # Load state dict
+
     if "model_state" in ckpt:
         model.load_state_dict(ckpt["model_state"])
     elif "model_state_dict" in ckpt:
         model.load_state_dict(ckpt["model_state_dict"])
     else:
         model.load_state_dict(ckpt)
+
     model.to(_device)
     model.eval()
-    return model
+
+    _unet_model = model
+    return _unet_model
 
 
-def segment_damage(image_array, model_name="fpn_ce_dice_focal_grad_contrastive_tuned_v2"):
+def _load_yolo_model(model_name="yolov8_seg"):
+    global _yolo_model
+
+    if _yolo_model is not None:
+        return _yolo_model
+
+    weights_path = ROOT / "outputs" / model_name / "best.pt"
+
+    if not weights_path.exists():
+        raise FileNotFoundError(f"YOLO weights not found at: {weights_path}")
+
+    model = YOLO(str(weights_path))
+    _yolo_model = model
+    return _yolo_model
+
+
+def segment_damage_unet(image_array, model_name="fpn_ce_dice_focal_grad_contrastive_tuned_v2"):
     """
     Runs actual PyTorch Unet inference using the selected model.
     """
-    model = _load_model(model_name)
+    model = _load_unet_model(model_name)
     # Process PIL image from numpy array
     image = Image.fromarray(image_array)
     original_size = image.size  # (width, height)
@@ -92,6 +121,39 @@ def segment_damage(image_array, model_name="fpn_ce_dice_focal_grad_contrastive_t
     # Using nearest neighbor interpolation for the mask resizing
     mask_img = mask_img.resize(original_size, resample=Image.NEAREST)
     return np.array(mask_img)
+
+def _segment_damage_yolo(image_array, model_name="yolov8_seg"):
+    model = _load_yolo_model(model_name)
+
+    h, w = image_array.shape[:2]
+
+    results = model.predict(
+        source=image_array,
+        verbose=False,
+        retina_masks=True
+    )
+
+    if not results or results[0].masks is None:
+        return np.zeros((h, w), dtype=np.uint8)
+
+    masks = results[0].masks.data  # shape: [N, H, W]
+    merged_mask = (masks.sum(dim=0) > 0).cpu().numpy().astype(np.uint8)
+
+    if merged_mask.shape != (h, w):
+        merged_mask = cv2.resize(
+            merged_mask,
+            (w, h),
+            interpolation=cv2.INTER_NEAREST
+        )
+
+    return merged_mask
+
+
+def segment_damage(image_array, model_name="fpn_ce_dice_focal_grad_contrastive_tuned_v2"):
+    if "yolo" in model_name.lower():
+        return _segment_damage_yolo(image_array, model_name)
+    return segment_damage_unet(image_array, model_name)
+
 
 def overlay_mask(image, mask, color=(0, 0, 255), alpha=0.5):
     """

@@ -7,4 +7,4 @@ __pycache__/
 *.ckpt
 .DS_Store
 
-server/.streamlit/secrets.toml
+.streamlit/secrets.toml
