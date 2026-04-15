@@ -63,7 +63,16 @@ The claim generation process leverages large language models and LangChain for s
 
 A Streamlit application (`server/app.py`) provides the user interface for image upload and interaction with the LLM-powered claim generation system.
 
-![Streamlit UI](assets/readme/streamlit_ui.jpeg)
+![Streamlit UI](assets/readme/ui_main_form.jpeg)
+![Streamlit UI](assets/readme/ui_damage_upload.jpeg)
+![Streamlit UI](assets/readme/ui_pipeline_observability.jpeg)
+
+## Generated Reports
+
+Sample outputs produced by the AutoClaim AI pipeline:
+
+- [Insurance Claim Report (PDF)](reports/autoclaim_report.pdf)
+- [Insurance Claim Letter (TXT)](reports/claim_letter.txt)
 
 ## Repository Layout
 
