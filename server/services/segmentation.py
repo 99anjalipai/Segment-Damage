@@ -15,10 +15,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from models import DamageSegmentor
+from models.mask2former_segmentor import DamageSegmentor as Mask2FormerSegmentor
 
 # Global model variables
 _unet_model = None
 _yolo_model = None
+_mask2former_model = None
 
 
 def _resolve_device() -> torch.device:
@@ -89,6 +91,40 @@ def _load_yolo_model(model_name="yolov8_seg"):
     _yolo_model = model
     return _yolo_model
 
+def _load_mask2former_model(model_name="mask2former_base"):
+    global _mask2former_model
+
+    if _mask2former_model is not None:
+        return _mask2former_model
+
+    config_path = ROOT / "configs" / f"{model_name}.yaml"
+    with open(config_path, "r") as f:
+        cfg = yaml.safe_load(f)
+
+    model_cfg = cfg["model"]
+    loss_cfg = cfg.get("training", {}).get("loss", {})
+
+    model = Mask2FormerSegmentor(
+        num_classes=model_cfg["num_classes"],
+        pretrained_model_name=model_cfg["pretrained_model_name"],
+        loss_config=loss_cfg,
+    )
+
+    weights_path = ROOT / "my_results_folder" / "mask2former" / model_name / "best.pt"
+    ckpt = torch.load(weights_path, map_location=_device)
+
+    if "model_state" in ckpt:
+        model.load_state_dict(ckpt["model_state"])
+    elif "model_state_dict" in ckpt:
+        model.load_state_dict(ckpt["model_state_dict"])
+    else:
+        model.load_state_dict(ckpt)
+
+    model.to(_device)
+    model.eval()
+
+    _mask2former_model = model
+    return _mask2former_model
 
 def segment_damage_unet(image_array, model_name="fpn_ce_dice_focal_grad_contrastive_tuned_v2"):
     """
@@ -148,12 +184,41 @@ def _segment_damage_yolo(image_array, model_name="yolov8_seg"):
 
     return merged_mask
 
+def segment_damage_mask2former(image_array, model_name="mask2former_base"):
+    model = _load_mask2former_model(model_name)
+
+    image = Image.fromarray(image_array)
+    original_size = image.size
+
+    image_resized = TF.resize(image, [512, 512], InterpolationMode.BILINEAR)
+    img_tensor = TF.to_tensor(image_resized)
+    img_tensor = TF.normalize(
+        img_tensor,
+        mean=[0.485, 0.456, 0.406],
+        std=[0.229, 0.224, 0.225],
+    ).unsqueeze(0).to(_device)
+
+    with torch.no_grad():
+        out = model(img_tensor)
+        logits = out["logits"]
+
+        if logits.shape[1] > 1:
+            preds = torch.argmax(logits, dim=1)
+        else:
+            preds = (torch.sigmoid(logits) > 0.5).int()
+
+        mask = preds.squeeze(0).cpu().numpy().astype(np.uint8)
+
+    mask_img = Image.fromarray(mask)
+    mask_img = mask_img.resize(original_size, resample=Image.NEAREST)
+    return np.array(mask_img)
 
 def segment_damage(image_array, model_name="fpn_ce_dice_focal_grad_contrastive_tuned_v2"):
     if "yolo" in model_name.lower():
         return _segment_damage_yolo(image_array, model_name)
+    if "mask2former" in name:
+        return segment_damage_mask2former(image_array, model_name)
     return segment_damage_unet(image_array, model_name)
-
 
 def overlay_mask(image, mask, color=(0, 0, 255), alpha=0.5):
     """

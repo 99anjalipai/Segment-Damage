@@ -150,6 +150,7 @@ def get_segmentation_models():
         "fpn_ce_dice_focal_grad_contrastive_tuned_v2",
         "fpn_ce_dice_focal_grad_contrastive_tuned_v3",
         "yolov8_seg",
+        "mask2former_base",
     ]
 
 def render_metric(value, label):
